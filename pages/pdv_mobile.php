@@ -1,0 +1,308 @@
+<?php
+function pdvMobileEnsureCustomerSchema(PDO $pdo): void
+{
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS customers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            first_name VARCHAR(80) NOT NULL,
+            last_name VARCHAR(80) NOT NULL,
+            phone VARCHAR(20) NOT NULL,
+            tax_id VARCHAR(18) NOT NULL,
+            car VARCHAR(120) NULL,
+            notes TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_customers_tax_id (tax_id)
+        )"
+    );
+
+    $hasCustomerId = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'customer_id'")->fetch();
+    if (!$hasCustomerId) {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
+        $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
+    }
+}
+
+pdvMobileEnsureCustomerSchema($pdo);
+
+$products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
+$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes FROM customers ORDER BY first_name, last_name")->fetchAll();
+?>
+
+<div class="max-w-4xl mx-auto">
+    <div class="mb-4">
+        <h2 class="text-2xl font-bold">PDV Mobile</h2>
+        <p class="text-sm text-slate-600">Tela responsiva para vendedores registrarem vendas rapidamente.</p>
+    </div>
+
+    <form method="post" action="actions/sale_finalize.php" class="bg-white rounded-xl shadow p-4 md:p-6">
+        <input type="hidden" name="return_page" value="pdv_mobile">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div class="md:col-span-2 relative">
+                <input type="hidden" name="customer_id" id="customer_id">
+                <input id="customer_search" autocomplete="off" placeholder="Buscar cliente por nome, telefone ou CPF/CNPJ" class="w-full border rounded px-3 py-3">
+                <div id="customer_suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
+            </div>
+            <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="border rounded px-3 py-3">
+            <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="border rounded px-3 py-3">
+            <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="border rounded px-3 py-3">
+            <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-3">
+            <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-3">
+            <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="border rounded px-3 py-3">
+            <select name="payment_method" class="border rounded px-3 py-3">
+                <option value="dinheiro">Dinheiro</option>
+                <option value="pix">PIX</option>
+                <option value="cartao">Cartao</option>
+                <option value="prazo">A prazo</option>
+            </select>
+            <select name="payment_status" class="border rounded px-3 py-3">
+                <option value="paid">Pago</option>
+                <option value="pending">Pendente</option>
+            </select>
+            <input type="date" name="due_date" class="border rounded px-3 py-3 md:col-span-2">
+        </div>
+
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">Itens da venda</h3>
+            <button type="button" onclick="addItem()" class="bg-slate-200 rounded px-3 py-2 text-sm">+ Item</button>
+        </div>
+
+        <div id="items" class="space-y-3"></div>
+
+        <div class="mt-4 p-3 rounded bg-slate-100 flex items-center justify-between">
+            <span class="text-sm text-slate-600">Total da venda</span>
+            <span id="sale_total" class="text-xl font-bold">R$ 0,00</span>
+        </div>
+
+        <button class="mt-4 w-full bg-emerald-600 text-white rounded px-4 py-3 font-semibold">Finalizar venda</button>
+    </form>
+</div>
+
+<script>
+const products = <?= json_encode($products, JSON_UNESCAPED_UNICODE) ?>;
+const customers = <?= json_encode($customers, JSON_UNESCAPED_UNICODE) ?>;
+const customerIdInput = document.getElementById('customer_id');
+const customerSearchInput = document.getElementById('customer_search');
+const customerSuggestions = document.getElementById('customer_suggestions');
+const firstNameInput = document.getElementById('customer_first_name');
+const lastNameInput = document.getElementById('customer_last_name');
+const phoneInput = document.getElementById('customer_phone');
+const taxIdInput = document.getElementById('customer_tax_id');
+const carInput = document.getElementById('customer_car');
+const notesInput = document.getElementById('customer_notes');
+const itemsWrapper = document.getElementById('items');
+const saleTotalEl = document.getElementById('sale_total');
+
+function brMoney(value) {
+    return `R$ ${Number(value).toFixed(2).replace('.', ',')}`;
+}
+
+function recalcTotal() {
+    const rows = itemsWrapper.querySelectorAll('[data-item-row]');
+    let total = 0;
+    rows.forEach((row) => {
+        const qty = Number(row.querySelector('input[name="items[quantity][]"]').value || 0);
+        const unit = Number(row.querySelector('input[name="items[unit_price][]"]').value || 0);
+        if (qty > 0 && unit >= 0) {
+            total += qty * unit;
+        }
+    });
+    saleTotalEl.textContent = brMoney(total);
+}
+
+function addItem() {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-item-row', '1');
+    wrapper.className = 'border rounded-lg p-3';
+
+    wrapper.innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div class="relative sm:col-span-2">
+                <input type="hidden" name="items[product_id][]" required>
+                <input type="text" data-role="product-search" autocomplete="off" placeholder="Buscar produto" class="w-full border rounded px-3 py-3">
+                <div data-role="product-suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
+            </div>
+            <input required min="1" type="number" name="items[quantity][]" placeholder="Quantidade" class="border rounded px-3 py-3">
+            <input required min="0" step="0.01" type="number" name="items[unit_price][]" placeholder="Preco unitario" class="border rounded px-3 py-3">
+        </div>
+        <div class="mt-2 text-right">
+            <button type="button" class="text-rose-700 text-sm underline">Remover item</button>
+        </div>
+    `;
+
+    const productIdInput = wrapper.querySelector('input[name="items[product_id][]"]');
+    const productSearch = wrapper.querySelector('input[data-role="product-search"]');
+    const productSuggestions = wrapper.querySelector('div[data-role="product-suggestions"]');
+    const qty = wrapper.querySelector('input[name="items[quantity][]"]');
+    const unit = wrapper.querySelector('input[name="items[unit_price][]"]');
+    const removeBtn = wrapper.querySelector('button');
+
+    function renderProductSuggestions(query) {
+        const q = query.trim().toLowerCase();
+        if (q.length < 1) {
+            productSuggestions.classList.add('hidden');
+            productSuggestions.innerHTML = '';
+            return;
+        }
+
+        const filtered = products.filter((p) =>
+            (p.name || '').toLowerCase().includes(q)
+        ).slice(0, 10);
+
+        if (filtered.length === 0) {
+            productSuggestions.classList.add('hidden');
+            productSuggestions.innerHTML = '';
+            return;
+        }
+
+        productSuggestions.innerHTML = filtered.map((p) => `
+            <button type="button" data-id="${p.id}" class="w-full text-left px-3 py-2 hover:bg-slate-100 border-b last:border-b-0">
+                <div class="font-medium">${p.name}</div>
+                <div class="text-xs text-slate-500">Est: ${p.stock_qty} | R$ ${Number(p.price).toFixed(2)}</div>
+            </button>
+        `).join('');
+
+        productSuggestions.classList.remove('hidden');
+
+        productSuggestions.querySelectorAll('button[data-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const id = Number(btn.getAttribute('data-id'));
+                const product = products.find((p) => Number(p.id) === id);
+                if (!product) return;
+                productIdInput.value = String(product.id);
+                productSearch.value = product.name;
+                if (!unit.value || Number(unit.value) === 0) {
+                    unit.value = Number(product.price).toFixed(2);
+                }
+                productSuggestions.classList.add('hidden');
+                recalcTotal();
+            });
+        });
+    }
+
+    productSearch.addEventListener('input', () => {
+        productIdInput.value = '';
+        renderProductSuggestions(productSearch.value);
+    });
+
+    productSearch.addEventListener('focus', () => {
+        renderProductSuggestions(productSearch.value);
+    });
+
+    productSearch.addEventListener('blur', () => {
+        setTimeout(() => productSuggestions.classList.add('hidden'), 150);
+    });
+
+    qty.addEventListener('input', recalcTotal);
+    unit.addEventListener('input', recalcTotal);
+    removeBtn.addEventListener('click', () => {
+        wrapper.remove();
+        recalcTotal();
+    });
+
+    itemsWrapper.appendChild(wrapper);
+}
+
+function clearCustomerSelection() {
+    customerIdInput.value = '';
+}
+
+function selectCustomer(customer) {
+    customerIdInput.value = String(customer.id);
+    customerSearchInput.value = customer.full_name;
+    firstNameInput.value = customer.first_name || '';
+    lastNameInput.value = customer.last_name || '';
+    phoneInput.value = customer.phone || '';
+    taxIdInput.value = customer.tax_id || '';
+    carInput.value = customer.car || '';
+    notesInput.value = customer.notes || '';
+    customerSuggestions.classList.add('hidden');
+}
+
+function renderCustomerSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    if (q.length < 1) {
+        customerSuggestions.classList.add('hidden');
+        customerSuggestions.innerHTML = '';
+        return;
+    }
+
+    const filtered = customers.filter((c) =>
+        c.full_name.toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.tax_id || '').toLowerCase().includes(q)
+    ).slice(0, 8);
+
+    if (filtered.length === 0) {
+        customerSuggestions.classList.add('hidden');
+        customerSuggestions.innerHTML = '';
+        return;
+    }
+
+    customerSuggestions.innerHTML = filtered.map((c) => `
+        <button type="button" data-id="${c.id}" class="w-full text-left px-3 py-2 hover:bg-slate-100 border-b last:border-b-0">
+            <div class="font-medium">${c.full_name}</div>
+            <div class="text-xs text-slate-500">${c.phone || '-'} | ${c.tax_id || '-'}</div>
+        </button>
+    `).join('');
+
+    customerSuggestions.classList.remove('hidden');
+
+    customerSuggestions.querySelectorAll('button[data-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = Number(btn.getAttribute('data-id'));
+            const customer = customers.find((c) => Number(c.id) === id);
+            if (customer) {
+                selectCustomer(customer);
+            }
+        });
+    });
+}
+
+customerSearchInput.addEventListener('input', () => {
+    clearCustomerSelection();
+    renderCustomerSuggestions(customerSearchInput.value);
+});
+
+customerSearchInput.addEventListener('blur', () => {
+    setTimeout(() => customerSuggestions.classList.add('hidden'), 150);
+});
+
+customerSearchInput.addEventListener('focus', () => {
+    renderCustomerSuggestions(customerSearchInput.value);
+});
+
+phoneInput.addEventListener('input', () => {
+    const digits = phoneInput.value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) {
+        phoneInput.value = digits;
+        return;
+    }
+    if (digits.length <= 7) {
+        phoneInput.value = `${digits.slice(0, 2)} ${digits.slice(2)}`;
+        return;
+    }
+    phoneInput.value = `${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+});
+
+taxIdInput.addEventListener('input', () => {
+    const digits = taxIdInput.value.replace(/\D/g, '').slice(0, 14);
+    if (digits.length <= 11) {
+        let v = digits;
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        taxIdInput.value = v;
+        return;
+    }
+    let v = digits;
+    v = v.replace(/^(\d{2})(\d)/, '$1.$2');
+    v = v.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+    v = v.replace(/\.(\d{3})(\d)/, '.$1/$2');
+    v = v.replace(/(\d{4})(\d)/, '$1-$2');
+    taxIdInput.value = v;
+});
+
+addItem();
+recalcTotal();
+</script>
