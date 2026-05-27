@@ -49,6 +49,13 @@ Base URL local (REST):
 - `PUT /costs/{id}`
 - `PATCH /costs/{id}`
 - `DELETE /costs/{id}`
+- `GET /bank-transactions`
+- `POST /bank-transactions`
+- `GET /bank-transactions/{id}`
+- `PUT /bank-transactions/{id}`
+- `PATCH /bank-transactions/{id}`
+- `DELETE /bank-transactions/{id}`
+- `GET /bank-transactions/summary`
 
 Obs.: o formato antigo com `?resource=...` continua funcionando por compatibilidade.
 
@@ -83,6 +90,13 @@ Todas as listagens aceitam:
 - `date_to` (YYYY-MM-DD)
 - `amount_min`
 - `amount_max`
+
+`GET /bank-transactions` filtros:
+- `bank` (`bb`, `santander`, `itau`)
+- `transaction_type` (`in` ou `out`)
+- `q` (descricao/referencia)
+- `date_from` (YYYY-MM-DD)
+- `date_to` (YYYY-MM-DD)
 
 Resposta de listagem inclui:
 - `data`
@@ -144,5 +158,25 @@ curl -X PATCH "http://localhost/ERP/api/costs/10" \
 ### Exemplo: listar custos com filtro
 ```bash
 curl -X GET "http://localhost/ERP/api/costs?page=1&limit=20&category=Operacional&date_from=2026-01-01&date_to=2026-12-31" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: criar lancamento bancario (conciliacao)
+```bash
+curl -X POST "http://localhost/ERP/api/bank-transactions" \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"bank\":\"itau\",\"transaction_type\":\"in\",\"description\":\"Recebimento PIX\",\"amount\":1500.00,\"transaction_date\":\"2026-05-27\",\"reference\":\"PIX-123\"}"
+```
+
+### Exemplo: listar conciliacao com filtro
+```bash
+curl -X GET "http://localhost/ERP/api/bank-transactions?page=1&limit=20&bank=bb&transaction_type=out&date_from=2026-05-01&date_to=2026-05-31" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: saldo por banco
+```bash
+curl -X GET "http://localhost/ERP/api/bank-transactions/summary" \
   -H "Authorization: Bearer SEU_TOKEN"
 ```

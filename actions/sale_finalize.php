@@ -42,9 +42,17 @@ $paymentMethod = $_POST['payment_method'] ?? 'dinheiro';
 $paymentStatus = $_POST['payment_status'] ?? 'paid';
 $dueDate = $_POST['due_date'] ?? date('Y-m-d');
 $returnPage = $_POST['return_page'] ?? 'pdv';
-$allowedReturnPages = ['pdv', 'pdv_mobile'];
+$allowedReturnPages = ['pdv', 'pdv_mobile', 'pdv_mobile_link'];
 if (!in_array($returnPage, $allowedReturnPages, true)) {
     $returnPage = 'pdv';
+}
+
+function saleReturnPath(string $returnPage): string
+{
+    if ($returnPage === 'pdv_mobile_link') {
+        return '../vendas/index.php';
+    }
+    return '../index.php?page=' . $returnPage;
 }
 
 $productIds = $_POST['items']['product_id'] ?? [];
@@ -53,12 +61,12 @@ $unitPrices = $_POST['items']['unit_price'] ?? [];
 
 if (!in_array($paymentStatus, ['paid', 'pending'], true)) {
     flash('error', 'Status de pagamento invalido.');
-    redirect('../index.php?page=' . $returnPage);
+    redirect(saleReturnPath($returnPage));
 }
 
 if (count($productIds) === 0) {
     flash('error', 'Adicione ao menos um item na venda.');
-    redirect('../index.php?page=' . $returnPage);
+    redirect(saleReturnPath($returnPage));
 }
 
 $items = [];
@@ -86,7 +94,7 @@ for ($i = 0; $i < count($productIds); $i++) {
 
 if ($totalAmount <= 0 || count($items) === 0) {
     flash('error', 'Itens invalidos na venda.');
-    redirect('../index.php?page=' . $returnPage);
+    redirect(saleReturnPath($returnPage));
 }
 
 try {
@@ -196,4 +204,4 @@ try {
     flash('error', 'Erro ao finalizar venda: ' . $e->getMessage());
 }
 
-redirect('../index.php?page=' . $returnPage);
+redirect(saleReturnPath($returnPage));

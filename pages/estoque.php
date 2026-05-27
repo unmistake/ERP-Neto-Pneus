@@ -125,8 +125,8 @@ $products = $stmt->fetchAll();
             <input name="rim_roda" placeholder="Aro da roda" class="w-full border rounded px-3 py-2">
         </div>
         <input name="location" placeholder="Local (ex: Prateleira A1)" class="w-full border rounded px-3 py-2">
-        <input required min="0" step="0.01" type="number" name="cost_price" placeholder="Preco custo" class="w-full border rounded px-3 py-2">
-        <input required min="0" step="0.01" type="number" name="price" placeholder="Preco" class="w-full border rounded px-3 py-2">
+        <input min="0" step="0.01" type="number" name="cost_price" placeholder="Preco custo (opcional)" class="w-full border rounded px-3 py-2">
+        <input min="0" step="0.01" type="number" name="price" placeholder="Preco (opcional)" class="w-full border rounded px-3 py-2">
         <input required min="0" type="number" name="stock_qty" placeholder="Quantidade inicial" class="w-full border rounded px-3 py-2">
         <button class="bg-slate-900 text-white rounded px-4 py-2 w-full">Salvar produto</button>
     </form>

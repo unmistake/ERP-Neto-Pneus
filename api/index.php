@@ -104,6 +104,19 @@ function ensureSchema(PDO $pdo): void
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )"
     );
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS bank_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            bank ENUM('bb','santander','itau') NOT NULL,
+            transaction_type ENUM('in','out') NOT NULL,
+            description VARCHAR(160) NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            transaction_date DATE NOT NULL,
+            reference VARCHAR(120) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"
+    );
 }
 
 function readJsonBody(): array
@@ -376,7 +389,19 @@ if (count($segments) === 0) {
         'ok' => true,
         'service' => 'ERP API',
         'version' => 'v1',
-        'endpoints' => ['/health', '/products', '/customers', '/customers/{id}', '/sales', '/sales/{id}', '/costs', '/costs/{id}'],
+        'endpoints' => [
+            '/health',
+            '/products',
+            '/customers',
+            '/customers/{id}',
+            '/sales',
+            '/sales/{id}',
+            '/costs',
+            '/costs/{id}',
+            '/bank-transactions',
+            '/bank-transactions/{id}',
+            '/bank-transactions/summary',
+        ],
     ]);
 }
 
@@ -890,6 +915,181 @@ if ($segments[0] === 'costs' && $method === 'DELETE' && count($segments) === 2) 
         apiResponse(404, ['ok' => false, 'error' => 'Custo nao encontrado.']);
     }
 
+    apiResponse(200, ['ok' => true, 'data' => ['deleted' => true]]);
+}
+
+if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments) === 2 && $segments[1] === 'summary') {
+    $rows = $pdo->query(
+        "SELECT
+            bank,
+            COALESCE(SUM(CASE WHEN transaction_type = 'in' THEN amount ELSE 0 END), 0) AS total_in,
+            COALESCE(SUM(CASE WHEN transaction_type = 'out' THEN amount ELSE 0 END), 0) AS total_out
+         FROM bank_transactions
+         GROUP BY bank"
+    )->fetchAll();
+
+    $summary = [
+        'bb' => ['bank' => 'bb', 'total_in' => 0.0, 'total_out' => 0.0, 'balance' => 0.0],
+        'santander' => ['bank' => 'santander', 'total_in' => 0.0, 'total_out' => 0.0, 'balance' => 0.0],
+        'itau' => ['bank' => 'itau', 'total_in' => 0.0, 'total_out' => 0.0, 'balance' => 0.0],
+    ];
+    foreach ($rows as $row) {
+        $bank = (string) ($row['bank'] ?? '');
+        if (!isset($summary[$bank])) {
+            continue;
+        }
+        $in = (float) $row['total_in'];
+        $out = (float) $row['total_out'];
+        $summary[$bank] = [
+            'bank' => $bank,
+            'total_in' => $in,
+            'total_out' => $out,
+            'balance' => $in - $out,
+        ];
+    }
+    apiResponse(200, ['ok' => true, 'data' => array_values($summary)]);
+}
+
+if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments) === 1) {
+    [$page, $limit, $offset] = getPaginationParams(20, 200);
+    $bank = trim((string) ($_GET['bank'] ?? ''));
+    $transactionType = trim((string) ($_GET['transaction_type'] ?? ''));
+    $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
+    $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+    $q = trim((string) ($_GET['q'] ?? ''));
+
+    $where = [];
+    $params = [];
+    if (in_array($bank, ['bb', 'santander', 'itau'], true)) {
+        $where[] = 'bank = ?';
+        $params[] = $bank;
+    }
+    if (in_array($transactionType, ['in', 'out'], true)) {
+        $where[] = 'transaction_type = ?';
+        $params[] = $transactionType;
+    }
+    if ($dateFrom !== '') {
+        $where[] = 'transaction_date >= ?';
+        $params[] = $dateFrom;
+    }
+    if ($dateTo !== '') {
+        $where[] = 'transaction_date <= ?';
+        $params[] = $dateTo;
+    }
+    if ($q !== '') {
+        $where[] = '(description LIKE ? OR reference LIKE ?)';
+        $like = '%' . $q . '%';
+        $params[] = $like;
+        $params[] = $like;
+    }
+
+    $whereSql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM bank_transactions $whereSql");
+    $countStmt->execute($params);
+    $total = (int) $countStmt->fetchColumn();
+
+    $sql = "SELECT id, bank, transaction_type, description, amount, transaction_date, reference, created_at
+            FROM bank_transactions
+            $whereSql
+            ORDER BY transaction_date DESC, id DESC
+            LIMIT $limit OFFSET $offset";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    apiResponse(200, ['ok' => true] + paginatedResponse($rows, $total, $page, $limit));
+}
+
+if ($segments[0] === 'bank-transactions' && $method === 'POST' && count($segments) === 1) {
+    $bank = trim((string) ($body['bank'] ?? ''));
+    $transactionType = trim((string) ($body['transaction_type'] ?? ''));
+    $description = trim((string) ($body['description'] ?? ''));
+    $amount = (float) ($body['amount'] ?? 0);
+    $transactionDate = trim((string) ($body['transaction_date'] ?? ''));
+    $reference = trim((string) ($body['reference'] ?? ''));
+
+    if (!in_array($bank, ['bb', 'santander', 'itau'], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'bank invalido. Use bb, santander ou itau.']);
+    }
+    if (!in_array($transactionType, ['in', 'out'], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'transaction_type invalido. Use in ou out.']);
+    }
+    if ($description === '' || $amount <= 0 || $transactionDate === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Campos obrigatorios: description, amount, transaction_date.']);
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO bank_transactions (bank, transaction_type, description, amount, transaction_date, reference)
+         VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([$bank, $transactionType, $description, $amount, $transactionDate, $reference !== '' ? $reference : null]);
+    apiResponse(201, ['ok' => true, 'data' => ['id' => (int) $pdo->lastInsertId()]]);
+}
+
+if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments) === 2) {
+    $id = (int) $segments[1];
+    if ($id <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
+    }
+    $stmt = $pdo->prepare('SELECT id, bank, transaction_type, description, amount, transaction_date, reference, created_at FROM bank_transactions WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        apiResponse(404, ['ok' => false, 'error' => 'Lancamento bancario nao encontrado.']);
+    }
+    apiResponse(200, ['ok' => true, 'data' => $row]);
+}
+
+if ($segments[0] === 'bank-transactions' && in_array($method, ['PUT', 'PATCH'], true) && count($segments) === 2) {
+    $id = (int) $segments[1];
+    if ($id <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
+    }
+
+    $stmt = $pdo->prepare('SELECT id, bank, transaction_type, description, amount, transaction_date, reference FROM bank_transactions WHERE id = ?');
+    $stmt->execute([$id]);
+    $current = $stmt->fetch();
+    if (!$current) {
+        apiResponse(404, ['ok' => false, 'error' => 'Lancamento bancario nao encontrado.']);
+    }
+
+    $bank = array_key_exists('bank', $body) ? trim((string) $body['bank']) : (string) $current['bank'];
+    $transactionType = array_key_exists('transaction_type', $body) ? trim((string) $body['transaction_type']) : (string) $current['transaction_type'];
+    $description = array_key_exists('description', $body) ? trim((string) $body['description']) : (string) $current['description'];
+    $amount = array_key_exists('amount', $body) ? (float) $body['amount'] : (float) $current['amount'];
+    $transactionDate = array_key_exists('transaction_date', $body) ? trim((string) $body['transaction_date']) : (string) $current['transaction_date'];
+    $reference = array_key_exists('reference', $body) ? trim((string) $body['reference']) : (string) ($current['reference'] ?? '');
+
+    if (!in_array($bank, ['bb', 'santander', 'itau'], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'bank invalido. Use bb, santander ou itau.']);
+    }
+    if (!in_array($transactionType, ['in', 'out'], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'transaction_type invalido. Use in ou out.']);
+    }
+    if ($description === '' || $amount <= 0 || $transactionDate === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Campos obrigatorios: description, amount, transaction_date.']);
+    }
+
+    $upd = $pdo->prepare(
+        'UPDATE bank_transactions
+         SET bank = ?, transaction_type = ?, description = ?, amount = ?, transaction_date = ?, reference = ?
+         WHERE id = ?'
+    );
+    $upd->execute([$bank, $transactionType, $description, $amount, $transactionDate, $reference !== '' ? $reference : null, $id]);
+
+    apiResponse(200, ['ok' => true, 'data' => ['id' => $id]]);
+}
+
+if ($segments[0] === 'bank-transactions' && $method === 'DELETE' && count($segments) === 2) {
+    $id = (int) $segments[1];
+    if ($id <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
+    }
+    $del = $pdo->prepare('DELETE FROM bank_transactions WHERE id = ?');
+    $del->execute([$id]);
+    if ($del->rowCount() === 0) {
+        apiResponse(404, ['ok' => false, 'error' => 'Lancamento bancario nao encontrado.']);
+    }
     apiResponse(200, ['ok' => true, 'data' => ['deleted' => true]]);
 }
 

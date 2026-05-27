@@ -26,6 +26,8 @@ pdvMobileEnsureCustomerSchema($pdo);
 
 $products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
 $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes FROM customers ORDER BY first_name, last_name")->fetchAll();
+$pdvFormAction = isset($pdvFormAction) ? (string) $pdvFormAction : 'actions/sale_finalize.php';
+$pdvReturnPage = isset($pdvReturnPage) ? (string) $pdvReturnPage : 'pdv_mobile';
 ?>
 
 <div class="max-w-4xl mx-auto">
@@ -34,8 +36,8 @@ $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, '
         <p class="text-sm text-slate-600">Tela responsiva para vendedores registrarem vendas rapidamente.</p>
     </div>
 
-    <form method="post" action="actions/sale_finalize.php" class="bg-white rounded-xl shadow p-4 md:p-6">
-        <input type="hidden" name="return_page" value="pdv_mobile">
+    <form method="post" action="<?= htmlspecialchars($pdvFormAction) ?>" class="bg-white rounded-xl shadow p-4 md:p-6">
+        <input type="hidden" name="return_page" value="<?= htmlspecialchars($pdvReturnPage) ?>">
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div class="md:col-span-2 relative">
