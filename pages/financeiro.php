@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/bank_schema.php';
+
 $pdo->exec(
     "CREATE TABLE IF NOT EXISTS costs (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -9,18 +11,7 @@ $pdo->exec(
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )"
 );
-$pdo->exec(
-    "CREATE TABLE IF NOT EXISTS bank_transactions (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        bank ENUM('bb','santander','itau') NOT NULL,
-        transaction_type ENUM('in','out') NOT NULL,
-        description VARCHAR(160) NOT NULL,
-        amount DECIMAL(10,2) NOT NULL,
-        transaction_date DATE NOT NULL,
-        reference VARCHAR(120) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )"
-);
+ensureBankTransactionsSchema($pdo);
 
 $payables = $pdo->query('SELECT * FROM accounts_payable ORDER BY due_date ASC')->fetchAll();
 $receivables = $pdo->query('SELECT * FROM accounts_receivable ORDER BY due_date ASC')->fetchAll();
@@ -112,6 +103,21 @@ foreach ($balancesRows as $row) {
     </form>
 </div>
 
+<div class="bg-white rounded-lg shadow p-4 mb-6">
+    <h3 class="font-semibold mb-1">Importar extrato bancario</h3>
+    <p class="text-sm text-slate-500 mb-3">Envie um extrato CSV, TXT ou OFX do Banco do Brasil, Santander ou Itau. Lancamentos repetidos serao ignorados automaticamente.</p>
+    <form method="post" action="actions/bank_statement_import.php" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <select required name="bank" class="border rounded px-3 py-2">
+            <option value="">Selecione o banco</option>
+            <option value="bb">Banco do Brasil</option>
+            <option value="santander">Santander</option>
+            <option value="itau">Itau</option>
+        </select>
+        <input required type="file" name="statement_file" accept=".csv,.txt,.ofx" class="border rounded px-3 py-2 md:col-span-2">
+        <button class="bg-indigo-600 text-white rounded px-4 py-2 font-semibold">Importar extrato</button>
+    </form>
+</div>
+
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
     <?php foreach ($bankBalances as $bank => $totals): ?>
         <?php $balance = $totals['in'] - $totals['out']; ?>
@@ -186,13 +192,15 @@ foreach ($balancesRows as $row) {
                 <th class="p-3 text-left">Descricao</th>
                 <th class="p-3 text-left">Referencia</th>
                 <th class="p-3 text-left">Valor</th>
+                <th class="p-3 text-left">Origem</th>
+                <th class="p-3 text-left">Conciliado</th>
                 <th class="p-3 text-left">Acoes</th>
             </tr>
         </thead>
         <tbody>
             <?php if (count($bankTransactions) === 0): ?>
                 <tr class="border-t">
-                    <td class="p-3" colspan="7">Nenhuma movimentação bancaria registrada.</td>
+                    <td class="p-3" colspan="9">Nenhuma movimentação bancaria registrada.</td>
                 </tr>
             <?php endif; ?>
             <?php foreach ($bankTransactions as $txn): ?>
@@ -206,9 +214,9 @@ foreach ($balancesRows as $row) {
                     <td class="p-3"><?= $isIn ? 'Entrada' : 'Saida' ?></td>
                     <td class="p-3"><?= htmlspecialchars((string) $txn['description']) ?></td>
                     <td class="p-3"><?= htmlspecialchars((string) ($txn['reference'] ?? '-')) ?></td>
-                    <td class="p-3 <?= $isIn ? 'text-emerald-700' : 'text-rose-700' ?>">
-                        <?= money((float) $txn['amount']) ?>
-                    </td>
+                    <td class="p-3 <?= $isIn ? 'text-emerald-700' : 'text-rose-700' ?>"><?= money((float) $txn['amount']) ?></td>
+                    <td class="p-3"><?= htmlspecialchars((string) ($txn['source'] ?? 'manual')) ?></td>
+                    <td class="p-3"><?= ((int) ($txn['reconciled'] ?? 0)) === 1 ? 'Sim' : 'Nao' ?></td>
                     <td class="p-3">
                         <form method="post" action="actions/bank_txn_delete.php" onsubmit="return confirm('Tem certeza que deseja excluir este lançamento?');">
                             <input type="hidden" name="txn_id" value="<?= (int) $txn['id'] ?>">

@@ -47,6 +47,9 @@ try {
     $delRecStmt = $pdo->prepare('DELETE FROM accounts_receivable WHERE sale_id = ?');
     $delRecStmt->execute([$saleId]);
 
+    $delFiscalStmt = $pdo->prepare('DELETE FROM fiscal_documents WHERE sale_id = ?');
+    $delFiscalStmt->execute([$saleId]);
+
     $delItemsStmt = $pdo->prepare('DELETE FROM sale_items WHERE sale_id = ?');
     $delItemsStmt->execute([$saleId]);
 

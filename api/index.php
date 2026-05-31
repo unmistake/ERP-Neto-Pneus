@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../includes/fiscal_focus.php';
+require_once __DIR__ . '/../includes/sale_schema.php';
+require_once __DIR__ . '/../includes/bank_schema.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -93,6 +96,7 @@ function ensureSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
         $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
     }
+    ensureSaleFiscalSchema($pdo);
 
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS costs (
@@ -105,18 +109,42 @@ function ensureSchema(PDO $pdo): void
         )"
     );
 
+    ensureBankTransactionsSchema($pdo);
+
     $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS bank_transactions (
+        "CREATE TABLE IF NOT EXISTS fiscal_documents (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            bank ENUM('bb','santander','itau') NOT NULL,
-            transaction_type ENUM('in','out') NOT NULL,
-            description VARCHAR(160) NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            transaction_date DATE NOT NULL,
-            reference VARCHAR(120) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            sale_id INT NOT NULL,
+            document_type ENUM('nfce','nfe') NOT NULL DEFAULT 'nfe',
+            reference_code VARCHAR(64) NOT NULL,
+            environment ENUM('homologacao','producao') NOT NULL DEFAULT 'homologacao',
+            status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+            focus_id VARCHAR(120) NULL,
+            access_key VARCHAR(64) NULL,
+            number VARCHAR(30) NULL,
+            series VARCHAR(20) NULL,
+            danfe_path VARCHAR(255) NULL,
+            xml_path VARCHAR(255) NULL,
+            message TEXT NULL,
+            request_payload LONGTEXT NULL,
+            response_payload LONGTEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_fiscal_reference (reference_code),
+            KEY idx_fiscal_sale (sale_id),
+            CONSTRAINT fk_fiscal_sale FOREIGN KEY (sale_id) REFERENCES sales(id)
         )"
     );
+    $fiscalExtraColumns = [
+        'danfe_path' => "ALTER TABLE fiscal_documents ADD COLUMN danfe_path VARCHAR(255) NULL AFTER series",
+        'xml_path' => "ALTER TABLE fiscal_documents ADD COLUMN xml_path VARCHAR(255) NULL AFTER danfe_path",
+    ];
+    foreach ($fiscalExtraColumns as $column => $sql) {
+        $exists = (bool) $pdo->query("SHOW COLUMNS FROM fiscal_documents LIKE " . $pdo->quote($column))->fetch();
+        if (!$exists) {
+            $pdo->exec($sql);
+        }
+    }
 }
 
 function readJsonBody(): array
@@ -212,7 +240,7 @@ function paginatedResponse(array $rows, int $total, int $page, int $limit): arra
 
 function fetchSaleWithItems(PDO $pdo, int $saleId): array
 {
-    $saleStmt = $pdo->prepare('SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, created_at FROM sales WHERE id = ?');
+    $saleStmt = $pdo->prepare('SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales WHERE id = ?');
     $saleStmt->execute([$saleId]);
     $sale = $saleStmt->fetch();
     if (!$sale) {
@@ -240,6 +268,9 @@ function createSale(PDO $pdo, array $body): int
     $customerTaxId = trim((string) ($body['customer_tax_id'] ?? ''));
     $paymentMethod = trim((string) ($body['payment_method'] ?? 'dinheiro'));
     $paymentStatus = trim((string) ($body['payment_status'] ?? 'paid'));
+    $issueNfe = (bool) ($body['issue_nfe'] ?? false);
+    $fiscalDocumentType = $issueNfe ? 'nfe' : 'none';
+    $fiscalStatus = $issueNfe ? 'pending' : 'not_requested';
     $dueDate = trim((string) ($body['due_date'] ?? date('Y-m-d')));
     $itemsInput = $body['items'] ?? [];
 
@@ -320,8 +351,8 @@ function createSale(PDO $pdo, array $body): int
             }
         }
 
-        $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status) VALUES (?, ?, ?, ?, ?)');
-        $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus]);
+        $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
         $saleId = (int) $pdo->lastInsertId();
 
         $stockStmt = $pdo->prepare('SELECT name, stock_qty FROM products WHERE id = ? FOR UPDATE');
@@ -396,6 +427,11 @@ if (count($segments) === 0) {
             '/customers/{id}',
             '/sales',
             '/sales/{id}',
+            '/sales/{id}/fiscal',
+            '/sales/{id}/fiscal/preview',
+            '/sales/{id}/fiscal/issue',
+            '/sales/{id}/fiscal/sync',
+            '/sales/{id}/fiscal/pdf',
             '/costs',
             '/costs/{id}',
             '/bank-transactions',
@@ -766,7 +802,7 @@ if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 1) {
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, created_at
+    $sql = "SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
             FROM sales
             $whereSql
             ORDER BY id DESC
@@ -789,6 +825,86 @@ if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 2) {
         apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
     }
     apiResponse(200, ['ok' => true, 'data' => fetchSaleWithItems($pdo, $saleId)]);
+}
+
+if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 3 && $segments[2] === 'fiscal') {
+    $saleId = (int) $segments[1];
+    if ($saleId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, sale_id, document_type, reference_code, environment, status, focus_id, access_key, number, series, danfe_path, xml_path, message, created_at, updated_at
+         FROM fiscal_documents
+         WHERE sale_id = ?
+         ORDER BY id DESC'
+    );
+    $stmt->execute([$saleId]);
+    $rows = $stmt->fetchAll();
+
+    apiResponse(200, ['ok' => true, 'data' => $rows]);
+}
+
+if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 4 && $segments[2] === 'fiscal' && $segments[3] === 'preview') {
+    $saleId = (int) $segments[1];
+    if ($saleId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
+    }
+
+    try {
+        apiResponse(200, ['ok' => true, 'data' => fiscalNfePreview($pdo, $saleId)]);
+    } catch (Throwable $e) {
+        apiResponse(400, ['ok' => false, 'error' => $e->getMessage()]);
+    }
+}
+
+if ($segments[0] === 'sales' && $method === 'POST' && count($segments) === 4 && $segments[2] === 'fiscal' && $segments[3] === 'issue') {
+    $saleId = (int) $segments[1];
+    if ($saleId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
+    }
+
+    try {
+        $result = fiscalIssueNfeBySale($pdo, $saleId);
+        apiResponse(201, ['ok' => true, 'data' => $result]);
+    } catch (Throwable $e) {
+        apiResponse(400, ['ok' => false, 'error' => $e->getMessage()]);
+    }
+}
+
+if ($segments[0] === 'sales' && $method === 'POST' && count($segments) === 4 && $segments[2] === 'fiscal' && $segments[3] === 'sync') {
+    $saleId = (int) $segments[1];
+    if ($saleId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
+    }
+
+    try {
+        $result = fiscalSyncLatestNfeBySale($pdo, $saleId);
+        apiResponse(200, ['ok' => true, 'data' => $result]);
+    } catch (Throwable $e) {
+        apiResponse(400, ['ok' => false, 'error' => $e->getMessage()]);
+    }
+}
+
+if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 4 && $segments[2] === 'fiscal' && $segments[3] === 'pdf') {
+    $saleId = (int) $segments[1];
+    if ($saleId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de venda invalido.']);
+    }
+
+    try {
+        $pdf = fiscalDownloadLatestNfeDanfe($pdo, $saleId);
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: ' . ($pdf['content_type'] ?: 'application/pdf'));
+        header('Content-Disposition: attachment; filename="' . $pdf['filename'] . '"');
+        header('Content-Length: ' . strlen((string) $pdf['content']));
+        echo $pdf['content'];
+        exit;
+    } catch (Throwable $e) {
+        apiResponse(400, ['ok' => false, 'error' => $e->getMessage()]);
+    }
 }
 
 if ($segments[0] === 'costs' && $method === 'GET' && count($segments) === 1) {
@@ -957,6 +1073,8 @@ if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments
     $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
     $dateTo = trim((string) ($_GET['date_to'] ?? ''));
     $q = trim((string) ($_GET['q'] ?? ''));
+    $source = trim((string) ($_GET['source'] ?? ''));
+    $reconciled = trim((string) ($_GET['reconciled'] ?? ''));
 
     $where = [];
     $params = [];
@@ -982,13 +1100,21 @@ if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments
         $params[] = $like;
         $params[] = $like;
     }
+    if ($source !== '') {
+        $where[] = 'source = ?';
+        $params[] = $source;
+    }
+    if ($reconciled !== '') {
+        $where[] = 'reconciled = ?';
+        $params[] = $reconciled === '1' || strtolower($reconciled) === 'true' ? 1 : 0;
+    }
 
     $whereSql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM bank_transactions $whereSql");
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, bank, transaction_type, description, amount, transaction_date, reference, created_at
+    $sql = "SELECT id, bank, external_id, source, transaction_type, description, amount, transaction_date, reference, reconciled, sale_id, cost_id, accounts_receivable_id, accounts_payable_id, created_at
             FROM bank_transactions
             $whereSql
             ORDER BY transaction_date DESC, id DESC
@@ -1007,6 +1133,8 @@ if ($segments[0] === 'bank-transactions' && $method === 'POST' && count($segment
     $amount = (float) ($body['amount'] ?? 0);
     $transactionDate = trim((string) ($body['transaction_date'] ?? ''));
     $reference = trim((string) ($body['reference'] ?? ''));
+    $externalId = trim((string) ($body['external_id'] ?? ''));
+    $source = trim((string) ($body['source'] ?? 'manual'));
 
     if (!in_array($bank, ['bb', 'santander', 'itau'], true)) {
         apiResponse(422, ['ok' => false, 'error' => 'bank invalido. Use bb, santander ou itau.']);
@@ -1019,10 +1147,10 @@ if ($segments[0] === 'bank-transactions' && $method === 'POST' && count($segment
     }
 
     $stmt = $pdo->prepare(
-        'INSERT INTO bank_transactions (bank, transaction_type, description, amount, transaction_date, reference)
-         VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO bank_transactions (bank, external_id, source, transaction_type, description, amount, transaction_date, reference)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    $stmt->execute([$bank, $transactionType, $description, $amount, $transactionDate, $reference !== '' ? $reference : null]);
+    $stmt->execute([$bank, $externalId !== '' ? $externalId : null, $source !== '' ? $source : 'manual', $transactionType, $description, $amount, $transactionDate, $reference !== '' ? $reference : null]);
     apiResponse(201, ['ok' => true, 'data' => ['id' => (int) $pdo->lastInsertId()]]);
 }
 
@@ -1031,7 +1159,7 @@ if ($segments[0] === 'bank-transactions' && $method === 'GET' && count($segments
     if ($id <= 0) {
         apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
     }
-    $stmt = $pdo->prepare('SELECT id, bank, transaction_type, description, amount, transaction_date, reference, created_at FROM bank_transactions WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, bank, external_id, source, transaction_type, description, amount, transaction_date, reference, reconciled, sale_id, cost_id, accounts_receivable_id, accounts_payable_id, raw_payload, created_at FROM bank_transactions WHERE id = ?');
     $stmt->execute([$id]);
     $row = $stmt->fetch();
     if (!$row) {

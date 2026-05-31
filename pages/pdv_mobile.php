@@ -20,12 +20,15 @@ function pdvMobileEnsureCustomerSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
         $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
     }
+
+    require_once __DIR__ . '/../includes/customer_schema.php';
+    ensureCustomerAddressSchema($pdo);
 }
 
 pdvMobileEnsureCustomerSchema($pdo);
 
 $products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
-$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes FROM customers ORDER BY first_name, last_name")->fetchAll();
+$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
 $pdvFormAction = isset($pdvFormAction) ? (string) $pdvFormAction : 'actions/sale_finalize.php';
 $pdvReturnPage = isset($pdvReturnPage) ? (string) $pdvReturnPage : 'pdv_mobile';
 ?>
@@ -51,6 +54,19 @@ $pdvReturnPage = isset($pdvReturnPage) ? (string) $pdvReturnPage : 'pdv_mobile';
             <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-3">
             <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-3">
             <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="border rounded px-3 py-3">
+            <label class="md:col-span-2 flex items-center gap-2 border rounded px-3 py-3 bg-slate-50">
+                <input type="checkbox" name="issue_nfe" id="issue_nfe" value="1" class="h-4 w-4">
+                <span class="font-medium">NF-e</span>
+            </label>
+            <div id="nfe_address_fields" class="hidden md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 border rounded p-3 bg-slate-50">
+                <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="border rounded px-3 py-3">
+                <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="border rounded px-3 py-3">
+                <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="border rounded px-3 py-3">
+                <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="border rounded px-3 py-3">
+                <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="border rounded px-3 py-3 uppercase">
+                <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="border rounded px-3 py-3">
+                <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="border rounded px-3 py-3 md:col-span-2">
+            </div>
             <select name="payment_method" class="border rounded px-3 py-3">
                 <option value="dinheiro">Dinheiro</option>
                 <option value="pix">PIX</option>
@@ -92,6 +108,15 @@ const phoneInput = document.getElementById('customer_phone');
 const taxIdInput = document.getElementById('customer_tax_id');
 const carInput = document.getElementById('customer_car');
 const notesInput = document.getElementById('customer_notes');
+const issueNfeInput = document.getElementById('issue_nfe');
+const nfeAddressFields = document.getElementById('nfe_address_fields');
+const addressStreetInput = document.getElementById('customer_address_street');
+const addressNumberInput = document.getElementById('customer_address_number');
+const addressDistrictInput = document.getElementById('customer_address_district');
+const addressCityInput = document.getElementById('customer_address_city');
+const addressStateInput = document.getElementById('customer_address_state');
+const addressZipInput = document.getElementById('customer_address_zip');
+const addressCountryInput = document.getElementById('customer_address_country');
 const itemsWrapper = document.getElementById('items');
 const saleTotalEl = document.getElementById('sale_total');
 
@@ -218,8 +243,22 @@ function selectCustomer(customer) {
     taxIdInput.value = customer.tax_id || '';
     carInput.value = customer.car || '';
     notesInput.value = customer.notes || '';
+    addressStreetInput.value = customer.address_street || '';
+    addressNumberInput.value = customer.address_number || '';
+    addressDistrictInput.value = customer.address_district || '';
+    addressCityInput.value = customer.address_city || '';
+    addressStateInput.value = customer.address_state || '';
+    addressZipInput.value = customer.address_zip || '';
+    addressCountryInput.value = customer.address_country || 'Brasil';
     customerSuggestions.classList.add('hidden');
 }
+
+function toggleNfeAddressFields() {
+    nfeAddressFields.classList.toggle('hidden', !issueNfeInput.checked);
+}
+
+issueNfeInput.addEventListener('change', toggleNfeAddressFields);
+toggleNfeAddressFields();
 
 function renderCustomerSuggestions(query) {
     const q = query.trim().toLowerCase();

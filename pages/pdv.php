@@ -20,19 +20,74 @@ function pdvEnsureCustomerSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
         $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
     }
+
+    require_once __DIR__ . '/../includes/customer_schema.php';
+    require_once __DIR__ . '/../includes/sale_schema.php';
+    ensureCustomerAddressSchema($pdo);
+    ensureSaleFiscalSchema($pdo);
 }
 
 pdvEnsureCustomerSchema($pdo);
 
 $products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products WHERE stock_qty > 0 ORDER BY name')->fetchAll();
-$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes FROM customers ORDER BY first_name, last_name")->fetchAll();
-$todaySales = $pdo->query('SELECT id, customer_name, total_amount, payment_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
+$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
+$todaySales = $pdo->query('SELECT id, customer_name, total_amount, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
 $salesDetails = [];
+
+$pdo->exec(
+    "CREATE TABLE IF NOT EXISTS fiscal_documents (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        sale_id INT NOT NULL,
+        document_type ENUM('nfce','nfe') NOT NULL DEFAULT 'nfe',
+        reference_code VARCHAR(64) NOT NULL,
+        environment ENUM('homologacao','producao') NOT NULL DEFAULT 'homologacao',
+        status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+        focus_id VARCHAR(120) NULL,
+            access_key VARCHAR(64) NULL,
+            number VARCHAR(30) NULL,
+            series VARCHAR(20) NULL,
+            danfe_path VARCHAR(255) NULL,
+            xml_path VARCHAR(255) NULL,
+            message TEXT NULL,
+        request_payload LONGTEXT NULL,
+        response_payload LONGTEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_fiscal_reference (reference_code),
+        KEY idx_fiscal_sale (sale_id),
+        CONSTRAINT fk_fiscal_sale FOREIGN KEY (sale_id) REFERENCES sales(id)
+    )"
+);
+$fiscalExtraColumns = [
+    'danfe_path' => "ALTER TABLE fiscal_documents ADD COLUMN danfe_path VARCHAR(255) NULL AFTER series",
+    'xml_path' => "ALTER TABLE fiscal_documents ADD COLUMN xml_path VARCHAR(255) NULL AFTER danfe_path",
+];
+foreach ($fiscalExtraColumns as $column => $sql) {
+    $exists = (bool) $pdo->query("SHOW COLUMNS FROM fiscal_documents LIKE " . $pdo->quote($column))->fetch();
+    if (!$exists) {
+        $pdo->exec($sql);
+    }
+}
+$pdo->exec("UPDATE fiscal_documents SET document_type = 'nfe' WHERE document_type = 'nfce' AND reference_code LIKE 'NFE%'");
+$pdo->exec(
+    "UPDATE sales s
+     INNER JOIN fiscal_documents fd ON fd.sale_id = s.id
+     INNER JOIN (
+        SELECT sale_id, MAX(id) AS max_id
+        FROM fiscal_documents
+        GROUP BY sale_id
+     ) latest ON latest.max_id = fd.id
+     SET s.fiscal_status = 'failed'
+     WHERE s.fiscal_document_type = 'nfe'
+       AND s.fiscal_status = 'issued'
+       AND fd.status IN ('rejeitado', 'erro_envio')"
+);
+
 if (count($todaySales) > 0) {
     $saleIds = array_map(static fn ($sale) => (int) $sale['id'], $todaySales);
     $placeholders = implode(',', array_fill(0, count($saleIds), '?'));
     $salesByIdStmt = $pdo->prepare(
-        "SELECT id, customer_name, total_amount, payment_method, payment_status, created_at
+        "SELECT id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
          FROM sales
          WHERE id IN ($placeholders)"
     );
@@ -64,6 +119,7 @@ if (count($todaySales) > 0) {
         }
         $salesDetails[$sid]['items'][] = $item;
     }
+
 }
 ?>
 
@@ -82,6 +138,17 @@ if (count($todaySales) > 0) {
         <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-2">
         <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-2">
         <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="border rounded px-3 py-2">
+        <label class="flex items-center gap-2 border rounded px-3 py-2 bg-slate-50">
+            <input type="checkbox" name="issue_nfe" value="1" class="h-4 w-4">
+            <span class="font-medium">NF-e</span>
+        </label>
+        <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="border rounded px-3 py-2">
+        <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="border rounded px-3 py-2">
+        <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="border rounded px-3 py-2">
+        <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="border rounded px-3 py-2">
+        <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="border rounded px-3 py-2 uppercase">
+        <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="border rounded px-3 py-2">
+        <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="border rounded px-3 py-2">
         <select name="payment_method" class="border rounded px-3 py-2">
             <option value="dinheiro">Dinheiro</option>
             <option value="pix">PIX</option>
@@ -110,6 +177,7 @@ if (count($todaySales) > 0) {
                 <th class="p-3 text-left">Cliente</th>
                 <th class="p-3 text-left">Total</th>
                 <th class="p-3 text-left">Status</th>
+                <th class="p-3 text-left">Fiscal</th>
                 <th class="p-3 text-left">Acoes</th>
             </tr>
         </thead>
@@ -121,7 +189,28 @@ if (count($todaySales) > 0) {
                     <td class="p-3"><?= money((float) $sale['total_amount']) ?></td>
                     <td class="p-3"><?= $sale['payment_status'] === 'paid' ? 'Pago' : 'Pendente' ?></td>
                     <td class="p-3">
+                        <?php if (($sale['fiscal_document_type'] ?? 'none') === 'nfe'): ?>
+                            <span class="inline-block px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">NF-e</span>
+                            <div class="text-xs text-slate-600 mt-1"><?= htmlspecialchars((string) ($sale['fiscal_status'] ?? 'pending')) ?></div>
+                        <?php else: ?>
+                            <span class="inline-block px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold">Sem NF-e</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="p-3">
                         <button type="button" class="text-blue-700 underline mr-3" onclick="showSaleDetails(<?= (int) $sale['id'] ?>)">Detalhes</button>
+                        <form method="post" action="actions/fiscal_issue.php" class="inline">
+                            <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                            <input type="hidden" name="return_page" value="pdv">
+                            <button type="submit" class="text-emerald-700 underline mr-3">Emitir NF-e</button>
+                        </form>
+                        <?php if (($sale['fiscal_document_type'] ?? 'none') === 'nfe'): ?>
+                            <form method="post" action="actions/fiscal_sync.php" class="inline">
+                                <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                <input type="hidden" name="return_page" value="pdv">
+                                <button type="submit" class="text-sky-700 underline mr-3">Sincronizar NF-e</button>
+                            </form>
+                            <a href="actions/fiscal_download_pdf.php?sale_id=<?= (int) $sale['id'] ?>" class="text-slate-700 underline mr-3">PDF NF-e</a>
+                        <?php endif; ?>
                         <form method="post" action="actions/sale_delete.php" class="inline" onsubmit="return confirm('Tem certeza que deseja excluir esta venda?');">
                             <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
                             <button type="submit" class="text-rose-700 underline">Excluir</button>
@@ -164,6 +253,13 @@ const phoneInput = document.getElementById('customer_phone');
 const taxIdInput = document.getElementById('customer_tax_id');
 const carInput = document.getElementById('customer_car');
 const notesInput = document.getElementById('customer_notes');
+const addressStreetInput = document.getElementById('customer_address_street');
+const addressNumberInput = document.getElementById('customer_address_number');
+const addressDistrictInput = document.getElementById('customer_address_district');
+const addressCityInput = document.getElementById('customer_address_city');
+const addressStateInput = document.getElementById('customer_address_state');
+const addressZipInput = document.getElementById('customer_address_zip');
+const addressCountryInput = document.getElementById('customer_address_country');
 const saleDetailsPanel = document.getElementById('sale-details-panel');
 const saleDetailsTitle = document.getElementById('sale-details-title');
 const saleDetailsMeta = document.getElementById('sale-details-meta');
@@ -258,6 +354,13 @@ function selectCustomer(customer) {
     taxIdInput.value = customer.tax_id || '';
     carInput.value = customer.car || '';
     notesInput.value = customer.notes || '';
+    addressStreetInput.value = customer.address_street || '';
+    addressNumberInput.value = customer.address_number || '';
+    addressDistrictInput.value = customer.address_district || '';
+    addressCityInput.value = customer.address_city || '';
+    addressStateInput.value = customer.address_state || '';
+    addressZipInput.value = customer.address_zip || '';
+    addressCountryInput.value = customer.address_country || 'Brasil';
     customerSuggestions.classList.add('hidden');
 }
 

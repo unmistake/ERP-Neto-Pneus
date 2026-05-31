@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/customer_schema.php';
+require_once __DIR__ . '/../includes/sale_schema.php';
 
 function saleEnsureCustomerSchema(PDO $pdo): void
 {
@@ -26,6 +28,9 @@ function saleEnsureCustomerSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
         $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
     }
+
+    ensureCustomerAddressSchema($pdo);
+    ensureSaleFiscalSchema($pdo);
 }
 
 saleEnsureCustomerSchema($pdo);
@@ -38,6 +43,16 @@ $customerPhone = trim($_POST['customer_phone'] ?? '');
 $customerTaxId = trim($_POST['customer_tax_id'] ?? '');
 $customerCar = trim($_POST['customer_car'] ?? '');
 $customerNotes = trim($_POST['customer_notes'] ?? '');
+$customerAddressStreet = trim($_POST['customer_address_street'] ?? '');
+$customerAddressNumber = trim($_POST['customer_address_number'] ?? '');
+$customerAddressDistrict = trim($_POST['customer_address_district'] ?? '');
+$customerAddressCity = trim($_POST['customer_address_city'] ?? '');
+$customerAddressState = strtoupper(substr(trim($_POST['customer_address_state'] ?? ''), 0, 2));
+$customerAddressZip = trim($_POST['customer_address_zip'] ?? '');
+$customerAddressCountry = trim($_POST['customer_address_country'] ?? 'Brasil');
+$issueNfe = ($_POST['issue_nfe'] ?? '') === '1';
+$fiscalDocumentType = $issueNfe ? 'nfe' : 'none';
+$fiscalStatus = $issueNfe ? 'pending' : 'not_requested';
 $paymentMethod = $_POST['payment_method'] ?? 'dinheiro';
 $paymentStatus = $_POST['payment_status'] ?? 'paid';
 $dueDate = $_POST['due_date'] ?? date('Y-m-d');
@@ -148,7 +163,9 @@ try {
                 $taxIdToSave = $customerTaxId !== '' ? $customerTaxId : ('AUTO' . time() . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT));
                 $phoneToSave = $customerPhone !== '' ? $customerPhone : '00 00000-0000';
                 $createCustomerStmt = $pdo->prepare(
-                    'INSERT INTO customers (first_name, last_name, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, ?, ?)'
+                    'INSERT INTO customers
+                        (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $createCustomerStmt->execute([
                     $firstName,
@@ -157,6 +174,13 @@ try {
                     $taxIdToSave,
                     $customerCar !== '' ? $customerCar : null,
                     $customerNotes !== '' ? $customerNotes : 'Criado automaticamente pelo PDV.',
+                    $customerAddressStreet !== '' ? $customerAddressStreet : null,
+                    $customerAddressNumber !== '' ? $customerAddressNumber : null,
+                    $customerAddressDistrict !== '' ? $customerAddressDistrict : null,
+                    $customerAddressCity !== '' ? $customerAddressCity : null,
+                    $customerAddressState !== '' ? $customerAddressState : null,
+                    $customerAddressZip !== '' ? $customerAddressZip : null,
+                    $customerAddressCountry !== '' ? $customerAddressCountry : 'Brasil',
                 ]);
 
                 $customerId = (int) $pdo->lastInsertId();
@@ -165,8 +189,33 @@ try {
         }
     }
 
-    $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status) VALUES (?, ?, ?, ?, ?)');
-    $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus]);
+    if ($customerId !== null && (
+        $customerAddressStreet !== '' ||
+        $customerAddressNumber !== '' ||
+        $customerAddressDistrict !== '' ||
+        $customerAddressCity !== '' ||
+        $customerAddressState !== '' ||
+        $customerAddressZip !== ''
+    )) {
+        $addressUpdateStmt = $pdo->prepare(
+            'UPDATE customers
+             SET address_street = ?, address_number = ?, address_district = ?, address_city = ?, address_state = ?, address_zip = ?, address_country = ?
+             WHERE id = ?'
+        );
+        $addressUpdateStmt->execute([
+            $customerAddressStreet !== '' ? $customerAddressStreet : null,
+            $customerAddressNumber !== '' ? $customerAddressNumber : null,
+            $customerAddressDistrict !== '' ? $customerAddressDistrict : null,
+            $customerAddressCity !== '' ? $customerAddressCity : null,
+            $customerAddressState !== '' ? $customerAddressState : null,
+            $customerAddressZip !== '' ? $customerAddressZip : null,
+            $customerAddressCountry !== '' ? $customerAddressCountry : 'Brasil',
+            $customerId,
+        ]);
+    }
+
+    $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
     $saleId = (int) $pdo->lastInsertId();
 
     $stockStmt = $pdo->prepare('SELECT name, stock_qty FROM products WHERE id = ? FOR UPDATE');

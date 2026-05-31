@@ -34,6 +34,14 @@
 Base URL local (REST):
 - `http://localhost/ERP/api`
 
+### Emissao Fiscal (Focus NFe)
+1. Configure `config/fiscal.php` com seu `FOCUS_TOKEN`.
+2. Preencha os dados do emitente em `focus > issuer`: CNPJ, Inscricao Estadual e regime tributario.
+3. Revise os padroes fiscais em `focus > nfe_defaults`: CFOP, NCM, origem e situacao tributaria do ICMS.
+4. Comece em homologacao (`FOCUS_ENV=homologacao`).
+5. Preencha `focus > nfe_recipient_address` enquanto o ERP ainda nao possui endereco completo no cadastro do cliente.
+6. Emissao inicial implementada para NF-e modelo 55 por venda.
+
 ### Rotas
 - `GET /health`
 - `GET /products`
@@ -43,6 +51,11 @@ Base URL local (REST):
 - `GET /sales`
 - `POST /sales`
 - `GET /sales/{id}`
+- `GET /sales/{id}/fiscal`
+- `GET /sales/{id}/fiscal/preview`
+- `POST /sales/{id}/fiscal/issue`
+- `POST /sales/{id}/fiscal/sync`
+- `GET /sales/{id}/fiscal/pdf`
 - `GET /costs`
 - `POST /costs`
 - `GET /costs/{id}`
@@ -98,6 +111,11 @@ Todas as listagens aceitam:
 - `date_from` (YYYY-MM-DD)
 - `date_to` (YYYY-MM-DD)
 
+### Conciliacao bancaria por extrato
+Na tela `Financeiro`, use `Importar extrato bancario` para enviar arquivos `CSV`, `TXT` ou `OFX` do Banco do Brasil, Santander ou Itau.
+
+O importador registra entradas e saidas em `bank_transactions` e ignora automaticamente lancamentos duplicados quando o mesmo extrato for importado novamente.
+
 Resposta de listagem inclui:
 - `data`
 - `pagination`: `page`, `limit`, `total`, `total_pages`, `has_next`, `has_prev`
@@ -121,6 +139,7 @@ curl -X POST "http://localhost/ERP/api/sales" \
     \"customer_tax_id\": \"123.456.789-00\",
     \"payment_method\": \"pix\",
     \"payment_status\": \"paid\",
+    \"issue_nfe\": true,
     \"items\": [
       {\"product_id\": 1, \"quantity\": 2, \"unit_price\": 499.9}
     ]
@@ -130,6 +149,30 @@ curl -X POST "http://localhost/ERP/api/sales" \
 ### Exemplo: detalhes de uma venda
 ```bash
 curl -X GET "http://localhost/ERP/api/sales/123" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: emitir NF-e para uma venda
+```bash
+curl -X POST "http://localhost/ERP/api/sales/123/fiscal/issue" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: consultar documentos fiscais da venda
+```bash
+curl -X GET "http://localhost/ERP/api/sales/123/fiscal" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: baixar PDF da NF-e
+```bash
+curl -L -o nfe-123.pdf "http://localhost/ERP/api/sales/123/fiscal/pdf" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### Exemplo: diagnosticar payload fiscal antes do envio
+```bash
+curl -X GET "http://localhost/ERP/api/sales/123/fiscal/preview" \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
 

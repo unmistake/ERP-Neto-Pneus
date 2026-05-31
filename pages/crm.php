@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../includes/customer_schema.php';
+
 function crmEnsureSchema(PDO $pdo): void
 {
     $pdo->exec(
@@ -22,6 +24,8 @@ function crmEnsureSchema(PDO $pdo): void
         $pdo->exec("ALTER TABLE sales ADD COLUMN customer_id INT NULL AFTER id");
         $pdo->exec('ALTER TABLE sales ADD CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)');
     }
+
+    ensureCustomerAddressSchema($pdo);
 }
 
 crmEnsureSchema($pdo);
@@ -67,6 +71,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $taxId = trim($_POST['tax_id'] ?? '');
     $car = trim($_POST['car'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
+    $addressStreet = trim($_POST['address_street'] ?? '');
+    $addressNumber = trim($_POST['address_number'] ?? '');
+    $addressDistrict = trim($_POST['address_district'] ?? '');
+    $addressCity = trim($_POST['address_city'] ?? '');
+    $addressState = strtoupper(substr(trim($_POST['address_state'] ?? ''), 0, 2));
+    $addressZip = trim($_POST['address_zip'] ?? '');
+    $addressCountry = trim($_POST['address_country'] ?? 'Brasil');
 
     if ($firstName === '' || $lastName === '' || $phone === '' || $taxId === '') {
         flash('error', 'Preencha nome, sobrenome, telefone e CPF/CNPJ.');
@@ -75,12 +86,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($customerId > 0) {
-            $stmt = $pdo->prepare('UPDATE customers SET first_name = ?, last_name = ?, phone = ?, tax_id = ?, car = ?, notes = ? WHERE id = ?');
-            $stmt->execute([$firstName, $lastName, $phone, $taxId, $car ?: null, $notes ?: null, $customerId]);
+            $stmt = $pdo->prepare(
+                'UPDATE customers
+                 SET first_name = ?, last_name = ?, phone = ?, tax_id = ?, car = ?, notes = ?,
+                     address_street = ?, address_number = ?, address_district = ?, address_city = ?,
+                     address_state = ?, address_zip = ?, address_country = ?
+                 WHERE id = ?'
+            );
+            $stmt->execute([
+                $firstName,
+                $lastName,
+                $phone,
+                $taxId,
+                $car ?: null,
+                $notes ?: null,
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+                $customerId,
+            ]);
             flash('success', 'Cliente atualizado com sucesso.');
         } else {
-            $stmt = $pdo->prepare('INSERT INTO customers (first_name, last_name, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$firstName, $lastName, $phone, $taxId, $car ?: null, $notes ?: null]);
+            $stmt = $pdo->prepare(
+                'INSERT INTO customers
+                    (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $firstName,
+                $lastName,
+                $phone,
+                $taxId,
+                $car ?: null,
+                $notes ?: null,
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+            ]);
             flash('success', 'Cliente cadastrado com sucesso.');
         }
     } catch (Throwable $e) {
@@ -160,6 +210,15 @@ if ($selectedCustomerId > 0) {
         <input required name="phone" id="phone" placeholder="Telefone (xx xxxxx-xxxx)" value="<?= htmlspecialchars((string) ($editingCustomer['phone'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         <input required name="tax_id" id="tax_id" placeholder="CPF/CNPJ" value="<?= htmlspecialchars((string) ($editingCustomer['tax_id'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         <input name="car" placeholder="Carro" value="<?= htmlspecialchars((string) ($editingCustomer['car'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input name="address_street" placeholder="Logradouro" value="<?= htmlspecialchars((string) ($editingCustomer['address_street'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+            <input name="address_number" placeholder="Numero" value="<?= htmlspecialchars((string) ($editingCustomer['address_number'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+            <input name="address_district" placeholder="Bairro" value="<?= htmlspecialchars((string) ($editingCustomer['address_district'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+            <input name="address_city" placeholder="Cidade" value="<?= htmlspecialchars((string) ($editingCustomer['address_city'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+            <input name="address_state" maxlength="2" placeholder="UF" value="<?= htmlspecialchars((string) ($editingCustomer['address_state'] ?? '')) ?>" class="w-full border rounded px-3 py-2 uppercase">
+            <input name="address_zip" placeholder="CEP" value="<?= htmlspecialchars((string) ($editingCustomer['address_zip'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
+            <input name="address_country" placeholder="Pais" value="<?= htmlspecialchars((string) ($editingCustomer['address_country'] ?? 'Brasil')) ?>" class="w-full border rounded px-3 py-2 md:col-span-2">
+        </div>
         <textarea name="notes" placeholder="Observacoes" class="w-full border rounded px-3 py-2 h-24"><?= htmlspecialchars((string) ($editingCustomer['notes'] ?? '')) ?></textarea>
         <button class="w-full bg-emerald-600 text-white rounded px-4 py-2"><?= $editingCustomer ? 'Atualizar cliente' : 'Salvar cliente' ?></button>
         <?php if ($editingCustomer): ?>
