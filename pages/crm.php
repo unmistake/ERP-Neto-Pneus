@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/customer_schema.php';
+require_once __DIR__ . '/../includes/sale_schema.php';
 
 function crmEnsureSchema(PDO $pdo): void
 {
@@ -26,6 +27,7 @@ function crmEnsureSchema(PDO $pdo): void
     }
 
     ensureCustomerAddressSchema($pdo);
+    ensureSaleFiscalSchema($pdo);
 }
 
 crmEnsureSchema($pdo);
@@ -162,7 +164,7 @@ if ($selectedCustomerId > 0) {
 
     if ($selectedCustomer) {
         $salesStmt = $pdo->prepare(
-            'SELECT s.id, s.created_at, s.total_amount, s.payment_method, s.payment_status
+            'SELECT s.id, s.created_at, s.seller_name, s.total_amount, s.payment_method, s.payment_status
              FROM sales s
              WHERE s.customer_id = ?
              ORDER BY s.id DESC'
@@ -282,6 +284,7 @@ if ($selectedCustomerId > 0) {
         <tr>
             <th class="p-3 text-left">Data</th>
             <th class="p-3 text-left">Venda</th>
+            <th class="p-3 text-left">Vendedor</th>
             <th class="p-3 text-left">Forma pagamento</th>
             <th class="p-3 text-left">Status</th>
             <th class="p-3 text-left">Total</th>
@@ -290,14 +293,15 @@ if ($selectedCustomerId > 0) {
         </thead>
         <tbody>
         <?php if (!$selectedCustomer): ?>
-            <tr class="border-t"><td class="p-3" colspan="6">Selecione um cliente para ver as compras antigas.</td></tr>
+            <tr class="border-t"><td class="p-3" colspan="7">Selecione um cliente para ver as compras antigas.</td></tr>
         <?php elseif (count($customerSales) === 0): ?>
-            <tr class="border-t"><td class="p-3" colspan="6">Nenhuma compra registrada para este cliente.</td></tr>
+            <tr class="border-t"><td class="p-3" colspan="7">Nenhuma compra registrada para este cliente.</td></tr>
         <?php else: ?>
             <?php foreach ($customerSales as $sale): ?>
                 <tr class="border-t">
                     <td class="p-3"><?= htmlspecialchars($sale['created_at']) ?></td>
                     <td class="p-3">#<?= (int) $sale['id'] ?></td>
+                    <td class="p-3"><?= htmlspecialchars((string) ($sale['seller_name'] ?? '-')) ?></td>
                     <td class="p-3"><?= htmlspecialchars($sale['payment_method']) ?></td>
                     <td class="p-3"><?= $sale['payment_status'] === 'paid' ? 'Pago' : 'Pendente' ?></td>
                     <td class="p-3"><?= money((float) $sale['total_amount']) ?></td>

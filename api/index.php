@@ -240,7 +240,7 @@ function paginatedResponse(array $rows, int $total, int $page, int $limit): arra
 
 function fetchSaleWithItems(PDO $pdo, int $saleId): array
 {
-    $saleStmt = $pdo->prepare('SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales WHERE id = ?');
+    $saleStmt = $pdo->prepare('SELECT id, customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales WHERE id = ?');
     $saleStmt->execute([$saleId]);
     $sale = $saleStmt->fetch();
     if (!$sale) {
@@ -266,6 +266,8 @@ function createSale(PDO $pdo, array $body): int
     $customerName = trim((string) ($body['customer_name'] ?? ''));
     $customerPhone = trim((string) ($body['customer_phone'] ?? ''));
     $customerTaxId = trim((string) ($body['customer_tax_id'] ?? ''));
+    $sellerName = trim((string) ($body['seller_name'] ?? ''));
+    $allowedSellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
     $paymentMethod = trim((string) ($body['payment_method'] ?? 'dinheiro'));
     $paymentStatus = trim((string) ($body['payment_status'] ?? 'paid'));
     $issueNfe = (bool) ($body['issue_nfe'] ?? false);
@@ -280,6 +282,10 @@ function createSale(PDO $pdo, array $body): int
 
     if (!in_array($paymentStatus, ['paid', 'pending'], true)) {
         apiResponse(422, ['ok' => false, 'error' => 'payment_status invalido.']);
+    }
+
+    if ($sellerName !== '' && !in_array($sellerName, $allowedSellers, true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'Vendedor invalido. Use Elias, Daniel, Felipe ou Eriko.']);
     }
 
     $items = [];
@@ -351,8 +357,8 @@ function createSale(PDO $pdo, array $body): int
             }
         }
 
-        $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
+        $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        $saleStmt->execute([$customerId, $customerName ?: null, $sellerName !== '' ? $sellerName : null, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
         $saleId = (int) $pdo->lastInsertId();
 
         $stockStmt = $pdo->prepare('SELECT name, stock_qty FROM products WHERE id = ? FOR UPDATE');
@@ -802,7 +808,7 @@ if ($segments[0] === 'sales' && $method === 'GET' && count($segments) === 1) {
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
+    $sql = "SELECT id, customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
             FROM sales
             $whereSql
             ORDER BY id DESC

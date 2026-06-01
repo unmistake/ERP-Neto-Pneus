@@ -223,3 +223,26 @@ curl -X GET "http://localhost/ERP/api/bank-transactions?page=1&limit=20&bank=bb&
 curl -X GET "http://localhost/ERP/api/bank-transactions/summary" \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
+
+## Publicar localmente com Cloudflare Tunnel
+
+Para usar o dominio `erp-netorodas.online` mantendo o ERP rodando no XAMPP local:
+
+```powershell
+.\scripts\setup-cloudflare-tunnel.ps1
+cloudflared tunnel run erp-netorodas
+```
+
+Na primeira execucao, o `cloudflared tunnel login` abrira o navegador para autorizar a conta Cloudflare e selecionar o dominio.
+
+Se o Apache ainda estiver servindo o projeto dentro de `/ERP`, o acesso inicial sera:
+
+```text
+https://erp-netorodas.online/ERP
+```
+
+Para abrir direto em `https://erp-netorodas.online`, execute o script abaixo como administrador e reinicie o Apache no XAMPP:
+
+```powershell
+.\scripts\setup-apache-erp-vhost.ps1
+```

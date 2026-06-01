@@ -29,10 +29,11 @@ function pdvEnsureCustomerSchema(PDO $pdo): void
 
 pdvEnsureCustomerSchema($pdo);
 
-$products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products WHERE stock_qty > 0 ORDER BY name')->fetchAll();
+$products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
 $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
-$todaySales = $pdo->query('SELECT id, customer_name, total_amount, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
+$todaySales = $pdo->query('SELECT id, customer_name, seller_name, total_amount, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
 $salesDetails = [];
+$sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
 
 $pdo->exec(
     "CREATE TABLE IF NOT EXISTS fiscal_documents (
@@ -87,7 +88,7 @@ if (count($todaySales) > 0) {
     $saleIds = array_map(static fn ($sale) => (int) $sale['id'], $todaySales);
     $placeholders = implode(',', array_fill(0, count($saleIds), '?'));
     $salesByIdStmt = $pdo->prepare(
-        "SELECT id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
+        "SELECT id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at
          FROM sales
          WHERE id IN ($placeholders)"
     );
@@ -149,6 +150,12 @@ if (count($todaySales) > 0) {
         <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="border rounded px-3 py-2 uppercase">
         <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="border rounded px-3 py-2">
         <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="border rounded px-3 py-2">
+        <select required name="seller_name" class="border rounded px-3 py-2">
+            <option value="">Selecione o vendedor</option>
+            <?php foreach ($sellers as $seller): ?>
+                <option value="<?= htmlspecialchars($seller) ?>"><?= htmlspecialchars($seller) ?></option>
+            <?php endforeach; ?>
+        </select>
         <select name="payment_method" class="border rounded px-3 py-2">
             <option value="dinheiro">Dinheiro</option>
             <option value="pix">PIX</option>
@@ -175,6 +182,7 @@ if (count($todaySales) > 0) {
             <tr>
                 <th class="p-3 text-left">Data</th>
                 <th class="p-3 text-left">Cliente</th>
+                <th class="p-3 text-left">Vendedor</th>
                 <th class="p-3 text-left">Total</th>
                 <th class="p-3 text-left">Status</th>
                 <th class="p-3 text-left">Fiscal</th>
@@ -186,6 +194,7 @@ if (count($todaySales) > 0) {
                 <tr class="border-t">
                     <td class="p-3"><?= htmlspecialchars($sale['created_at']) ?></td>
                     <td class="p-3"><?= htmlspecialchars($sale['customer_name'] ?: 'Consumidor final') ?></td>
+                    <td class="p-3"><?= htmlspecialchars((string) ($sale['seller_name'] ?? '-')) ?></td>
                     <td class="p-3"><?= money((float) $sale['total_amount']) ?></td>
                     <td class="p-3"><?= $sale['payment_status'] === 'paid' ? 'Pago' : 'Pendente' ?></td>
                     <td class="p-3">
@@ -265,14 +274,25 @@ const saleDetailsTitle = document.getElementById('sale-details-title');
 const saleDetailsMeta = document.getElementById('sale-details-meta');
 const saleDetailsItems = document.getElementById('sale-details-items');
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    }[char]));
+}
+
 function addItem() {
     const wrapper = document.createElement('div');
     wrapper.className = 'grid grid-cols-1 md:grid-cols-4 gap-2';
 
     wrapper.innerHTML = `
         <div class="relative md:col-span-2">
-            <input type="hidden" name="items[product_id][]" required>
-            <input type="text" data-role="product-search" autocomplete="off" placeholder="Buscar produto" class="w-full border rounded px-3 py-2">
+            <input type="hidden" name="items[product_id][]">
+            <input type="hidden" name="items[product_name][]">
+            <input type="text" data-role="product-search" autocomplete="off" placeholder="Buscar produto ou digitar novo produto" class="w-full border rounded px-3 py-2">
             <div data-role="product-suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
         </div>
         <input required min="1" type="number" name="items[quantity][]" placeholder="Qtd" class="border rounded px-3 py-2">
@@ -281,6 +301,7 @@ function addItem() {
     `;
 
     const productIdInput = wrapper.querySelector('input[name="items[product_id][]"]');
+    const productNameInput = wrapper.querySelector('input[name="items[product_name][]"]');
     const productSearch = wrapper.querySelector('input[data-role="product-search"]');
     const productSuggestions = wrapper.querySelector('div[data-role="product-suggestions"]');
     const unitInput = wrapper.querySelector('input[name="items[unit_price][]"]');
@@ -298,18 +319,23 @@ function addItem() {
             (p.name || '').toLowerCase().includes(q)
         ).slice(0, 10);
 
-        if (filtered.length === 0) {
-            productSuggestions.classList.add('hidden');
-            productSuggestions.innerHTML = '';
-            return;
-        }
-
-        productSuggestions.innerHTML = filtered.map((p) => `
+        const rows = filtered.map((p) => `
             <button type="button" data-id="${p.id}" class="w-full text-left px-3 py-2 hover:bg-slate-100 border-b last:border-b-0">
-                <div class="font-medium">${p.name}</div>
+                <div class="font-medium">${escapeHtml(p.name)}</div>
                 <div class="text-xs text-slate-500">Est: ${p.stock_qty} | R$ ${Number(p.price).toFixed(2)}</div>
             </button>
-        `).join('');
+        `);
+
+        if (!filtered.some((p) => (p.name || '').toLowerCase() === q)) {
+            rows.push(`
+                <button type="button" data-new-product="1" class="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800">
+                    <div class="font-medium">Cadastrar novo: ${escapeHtml(query.trim())}</div>
+                    <div class="text-xs">Sera criado automaticamente ao finalizar a venda</div>
+                </button>
+            `);
+        }
+
+        productSuggestions.innerHTML = rows.join('');
 
         productSuggestions.classList.remove('hidden');
 
@@ -319,6 +345,7 @@ function addItem() {
                 const product = products.find((p) => Number(p.id) === id);
                 if (!product) return;
                 productIdInput.value = String(product.id);
+                productNameInput.value = product.name;
                 productSearch.value = product.name;
                 if (!unitInput.value || Number(unitInput.value) === 0) {
                     unitInput.value = Number(product.price).toFixed(2);
@@ -326,10 +353,21 @@ function addItem() {
                 productSuggestions.classList.add('hidden');
             });
         });
+
+        const newProductButton = productSuggestions.querySelector('button[data-new-product]');
+        if (newProductButton) {
+            newProductButton.addEventListener('click', () => {
+                productIdInput.value = '';
+                productNameInput.value = query.trim();
+                productSearch.value = query.trim();
+                productSuggestions.classList.add('hidden');
+            });
+        }
     }
 
     productSearch.addEventListener('input', () => {
         productIdInput.value = '';
+        productNameInput.value = productSearch.value.trim();
         renderProductSuggestions(productSearch.value);
     });
     productSearch.addEventListener('focus', () => renderProductSuggestions(productSearch.value));
@@ -431,7 +469,7 @@ function showSaleDetails(saleId) {
     const customer = sale.customer_name || 'Consumidor final';
     const status = sale.payment_status === 'paid' ? 'Pago' : 'Pendente';
     saleDetailsTitle.textContent = `Detalhes da venda #${sale.id} - ${customer}`;
-    saleDetailsMeta.innerHTML = `<p>Data: ${sale.created_at}</p><p>Pagamento: ${sale.payment_method} (${status})</p>`;
+    saleDetailsMeta.innerHTML = `<p>Data: ${sale.created_at}</p><p>Vendedor: ${sale.seller_name || '-'}</p><p>Pagamento: ${sale.payment_method} (${status})</p>`;
 
     const items = data.items || [];
     let rows = '';
@@ -471,6 +509,48 @@ phoneInput.addEventListener('input', () => {
     }
     phoneInput.value = `${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
 });
+
+async function fillAddressByCep() {
+    const cep = addressZipInput.value.replace(/\D/g, '').slice(0, 8);
+    if (cep.length !== 8) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        if (data.erro) {
+            return;
+        }
+
+        addressStreetInput.value = data.logradouro || addressStreetInput.value;
+        addressDistrictInput.value = data.bairro || addressDistrictInput.value;
+        addressCityInput.value = data.localidade || addressCityInput.value;
+        addressStateInput.value = data.uf || addressStateInput.value;
+        addressCountryInput.value = 'Brasil';
+    } catch (error) {
+        console.warn('Nao foi possivel consultar o CEP no ViaCEP.', error);
+    }
+}
+
+addressZipInput.addEventListener('input', () => {
+    const digits = addressZipInput.value.replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 5) {
+        addressZipInput.value = digits;
+    } else {
+        addressZipInput.value = `${digits.slice(0, 5)}-${digits.slice(5)}`;
+    }
+
+    if (digits.length === 8) {
+        fillAddressByCep();
+    }
+});
+
+addressZipInput.addEventListener('blur', fillAddressByCep);
 
 taxIdInput.addEventListener('input', () => {
     const digits = taxIdInput.value.replace(/\D/g, '').slice(0, 14);

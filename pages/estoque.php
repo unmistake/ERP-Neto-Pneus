@@ -29,9 +29,62 @@ if (!$hasRimColumn) {
 }
 $pdo->exec("UPDATE products SET location = 'Depósito' WHERE LOWER(TRIM(location)) = 'no andar de cima da loja' OR LOWER(TRIM(location)) = 'andar de cima da loja'");
 
+function inventoryFilterValues(string $key): array
+{
+    $value = $_GET[$key] ?? [];
+    if (!is_array($value)) {
+        $value = [$value];
+    }
+
+    return array_values(array_unique(array_filter(array_map(static fn ($item) => trim((string) $item), $value), static fn ($item) => $item !== '')));
+}
+
+function inventoryDistinctOptions(array $products, string $column): array
+{
+    $values = [];
+    foreach ($products as $product) {
+        $value = trim((string) ($product[$column] ?? ''));
+        if ($value !== '') {
+            $values[$value] = $value;
+        }
+    }
+    natcasesort($values);
+
+    return array_values($values);
+}
+
+function inventoryRenderFilterDropdown(string $name, string $label, array $options, array $selected, array $labels = []): void
+{
+    $selectedCount = count($selected);
+    ?>
+    <div class="relative js-filter-dropdown">
+        <button type="button" class="js-filter-toggle w-full border rounded px-3 py-2 bg-white text-left flex items-center justify-between gap-2">
+            <span><?= htmlspecialchars($label) ?><?= $selectedCount > 0 ? ' (' . $selectedCount . ')' : '' ?></span>
+            <span class="text-slate-500">▾</span>
+        </button>
+        <div class="js-filter-menu hidden absolute z-30 mt-2 w-72 max-h-80 overflow-auto bg-white border rounded-lg shadow-lg p-3">
+            <?php if (count($options) === 0): ?>
+                <p class="text-sm text-slate-500">Nenhuma opção disponível.</p>
+            <?php endif; ?>
+            <?php foreach ($options as $value): ?>
+                <label class="flex items-center gap-2 py-1 text-sm cursor-pointer">
+                    <input type="checkbox" name="<?= htmlspecialchars($name) ?>[]" value="<?= htmlspecialchars($value) ?>" <?= in_array((string) $value, $selected, true) ? 'checked' : '' ?>>
+                    <span><?= htmlspecialchars($labels[$value] ?? (string) $value) ?></span>
+                </label>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php
+}
+
 $search = trim((string) ($_GET['search'] ?? ''));
-$stockFilter = (string) ($_GET['stock_filter'] ?? 'all');
-$usedTireConditionFilter = (string) ($_GET['used_tire_condition'] ?? '');
+$stockFilters = inventoryFilterValues('stock_filter');
+$categoryFilters = inventoryFilterValues('category_filter');
+$conditionFilters = inventoryFilterValues('condition_filter');
+$usedTireConditionFilters = inventoryFilterValues('used_tire_condition');
+$brandFilters = inventoryFilterValues('brand_filter');
+$modelFilters = inventoryFilterValues('model_filter');
+$locationFilters = inventoryFilterValues('location_filter');
 
 $allProducts = $pdo->query('SELECT * FROM products ORDER BY name')->fetchAll();
 
@@ -46,18 +99,62 @@ if ($search !== '') {
     $params[] = $like;
 }
 
-if ($stockFilter === 'positive') {
-    $where[] = 'stock_qty > 0';
-} elseif ($stockFilter === 'zero') {
-    $where[] = 'stock_qty = 0';
-} elseif ($stockFilter === 'negative') {
-    $where[] = 'stock_qty < 0';
+if (count($stockFilters) > 0) {
+    $stockWhere = [];
+    if (in_array('positive', $stockFilters, true)) {
+        $stockWhere[] = 'stock_qty > 0';
+    }
+    if (in_array('zero', $stockFilters, true)) {
+        $stockWhere[] = 'stock_qty = 0';
+    }
+    if (in_array('negative', $stockFilters, true)) {
+        $stockWhere[] = 'stock_qty < 0';
+    }
+    if (count($stockWhere) > 0) {
+        $where[] = '(' . implode(' OR ', $stockWhere) . ')';
+    }
+}
+
+$validCategories = ['pneu', 'roda'];
+if (count($categoryFilters) > 0) {
+    $categoryFilters = array_values(array_intersect($categoryFilters, $validCategories));
+    if (count($categoryFilters) > 0) {
+        $where[] = 'category IN (' . implode(',', array_fill(0, count($categoryFilters), '?')) . ')';
+        array_push($params, ...$categoryFilters);
+    }
+}
+
+$validConditions = ['novo', 'usado'];
+if (count($conditionFilters) > 0) {
+    $conditionFilters = array_values(array_intersect($conditionFilters, $validConditions));
+    if (count($conditionFilters) > 0) {
+        $where[] = 'item_condition IN (' . implode(',', array_fill(0, count($conditionFilters), '?')) . ')';
+        array_push($params, ...$conditionFilters);
+    }
 }
 
 $validUsedTireConditions = ['seminovo', 'meia_vida', 'abaixo_50_twi', 'seminovo_com_reparo'];
-if (in_array($usedTireConditionFilter, $validUsedTireConditions, true)) {
-    $where[] = 'used_tire_condition = ?';
-    $params[] = $usedTireConditionFilter;
+if (count($usedTireConditionFilters) > 0) {
+    $usedTireConditionFilters = array_values(array_intersect($usedTireConditionFilters, $validUsedTireConditions));
+    if (count($usedTireConditionFilters) > 0) {
+        $where[] = 'used_tire_condition IN (' . implode(',', array_fill(0, count($usedTireConditionFilters), '?')) . ')';
+        array_push($params, ...$usedTireConditionFilters);
+    }
+}
+
+if (count($brandFilters) > 0) {
+    $where[] = 'brand IN (' . implode(',', array_fill(0, count($brandFilters), '?')) . ')';
+    array_push($params, ...$brandFilters);
+}
+
+if (count($modelFilters) > 0) {
+    $where[] = 'model IN (' . implode(',', array_fill(0, count($modelFilters), '?')) . ')';
+    array_push($params, ...$modelFilters);
+}
+
+if (count($locationFilters) > 0) {
+    $where[] = 'location IN (' . implode(',', array_fill(0, count($locationFilters), '?')) . ')';
+    array_push($params, ...$locationFilters);
 }
 
 $sql = 'SELECT * FROM products';
@@ -73,24 +170,33 @@ $products = $stmt->fetchAll();
 
 <h2 class="text-2xl font-bold mb-4">Gestao de Estoque</h2>
 
-<form method="get" class="bg-white p-4 rounded-lg shadow mb-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+<form method="get" class="bg-white p-4 rounded-lg shadow mb-4 space-y-3">
     <input type="hidden" name="page" value="estoque">
-    <input name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Buscar por produto, marca, modelo ou local" class="w-full border rounded px-3 py-2">
-    <select name="stock_filter" class="w-full border rounded px-3 py-2">
-        <option value="all" <?= $stockFilter === 'all' ? 'selected' : '' ?>>Todos os estoques</option>
-        <option value="positive" <?= $stockFilter === 'positive' ? 'selected' : '' ?>>Maior que zero</option>
-        <option value="zero" <?= $stockFilter === 'zero' ? 'selected' : '' ?>>Zerado</option>
-        <option value="negative" <?= $stockFilter === 'negative' ? 'selected' : '' ?>>Negativo</option>
-    </select>
-    <select name="used_tire_condition" class="w-full border rounded px-3 py-2">
-        <option value="">Todos os usados</option>
-        <option value="seminovo" <?= $usedTireConditionFilter === 'seminovo' ? 'selected' : '' ?>>Seminovo</option>
-        <option value="meia_vida" <?= $usedTireConditionFilter === 'meia_vida' ? 'selected' : '' ?>>Meia vida</option>
-        <option value="abaixo_50_twi" <?= $usedTireConditionFilter === 'abaixo_50_twi' ? 'selected' : '' ?>>Abaixo de 50% do TWI</option>
-        <option value="seminovo_com_reparo" <?= $usedTireConditionFilter === 'seminovo_com_reparo' ? 'selected' : '' ?>>Seminovo com reparo</option>
-    </select>
-    <button class="bg-slate-900 text-white rounded px-4 py-2">Filtrar</button>
-    <a href="index.php?page=estoque" class="bg-slate-200 text-slate-800 rounded px-4 py-2 text-center">Limpar</a>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <input name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Buscar por produto, marca, modelo ou local" class="w-full border rounded px-3 py-2 md:col-span-2">
+        <button class="bg-slate-900 text-white rounded px-4 py-2">Aplicar filtros</button>
+        <a href="index.php?page=estoque" class="bg-slate-200 text-slate-800 rounded px-4 py-2 text-center">Limpar</a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <?php
+        inventoryRenderFilterDropdown('brand_filter', 'Marca', inventoryDistinctOptions($allProducts, 'brand'), $brandFilters);
+        inventoryRenderFilterDropdown('model_filter', 'Modelo', inventoryDistinctOptions($allProducts, 'model'), $modelFilters);
+        inventoryRenderFilterDropdown('location_filter', 'Local', inventoryDistinctOptions($allProducts, 'location'), $locationFilters);
+        inventoryRenderFilterDropdown('category_filter', 'Categoria', ['pneu', 'roda'], $categoryFilters, ['pneu' => 'Pneu', 'roda' => 'Roda']);
+        inventoryRenderFilterDropdown('condition_filter', 'Estado', ['novo', 'usado'], $conditionFilters, ['novo' => 'Novo', 'usado' => 'Usado']);
+        inventoryRenderFilterDropdown('used_tire_condition', 'Classificacao usado', $validUsedTireConditions, $usedTireConditionFilters, [
+            'seminovo' => 'Seminovo',
+            'meia_vida' => 'Meia vida',
+            'abaixo_50_twi' => 'Abaixo de 50% do TWI',
+            'seminovo_com_reparo' => 'Seminovo com reparo',
+        ]);
+        inventoryRenderFilterDropdown('stock_filter', 'Estoque', ['positive', 'zero', 'negative'], $stockFilters, [
+            'positive' => 'Maior que zero',
+            'zero' => 'Zerado',
+            'negative' => 'Negativo',
+        ]);
+        ?>
+    </div>
 </form>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
@@ -175,7 +281,9 @@ $products = $stmt->fetchAll();
             <?php endif; ?>
             <?php foreach ($products as $product): ?>
                 <tr class="border-t">
-                    <td class="p-3"><?= htmlspecialchars($product['name']) ?></td>
+                    <td class="p-3">
+                        <input form="price-form-<?= (int) $product['id'] ?>" required name="name" value="<?= htmlspecialchars((string) $product['name']) ?>" class="w-56 border rounded px-2 py-1">
+                    </td>
                     <td class="p-3"><?= ($product['category'] ?? 'pneu') === 'roda' ? 'Roda' : 'Pneu' ?></td>
                     <td class="p-3"><?= ($product['item_condition'] ?? 'novo') === 'usado' ? 'Usado' : 'Novo' ?></td>
                     <td class="p-3">
@@ -190,8 +298,12 @@ $products = $stmt->fetchAll();
                         echo htmlspecialchars($labels[$u] ?? '-');
                         ?>
                     </td>
-                    <td class="p-3"><?= htmlspecialchars((string) $product['brand']) ?></td>
-                    <td class="p-3"><?= htmlspecialchars((string) $product['model']) ?></td>
+                    <td class="p-3">
+                        <input form="price-form-<?= (int) $product['id'] ?>" name="brand" value="<?= htmlspecialchars((string) $product['brand']) ?>" class="w-36 border rounded px-2 py-1">
+                    </td>
+                    <td class="p-3">
+                        <input form="price-form-<?= (int) $product['id'] ?>" name="model" value="<?= htmlspecialchars((string) $product['model']) ?>" class="w-36 border rounded px-2 py-1">
+                    </td>
                     <td class="p-3">
                         <?php if (($product['category'] ?? 'pneu') === 'pneu'): ?>
                             <?= htmlspecialchars(trim(((string) ($product['width'] ?? '')) . '|' . ((string) ($product['profile'] ?? '')) . '|' . ((string) ($product['rim'] ?? '')))) ?>
@@ -211,7 +323,7 @@ $products = $stmt->fetchAll();
                         <div class="flex items-center gap-3">
                             <form id="price-form-<?= (int) $product['id'] ?>" class="js-price-form" method="post" action="actions/product_update_prices.php">
                                 <input type="hidden" name="product_id" value="<?= (int) $product['id'] ?>">
-                                <button type="submit" class="text-sky-700 underline">Salvar preco</button>
+                                <button type="submit" class="text-sky-700 underline">Salvar</button>
                                 <span class="ml-2 text-xs text-emerald-700 hidden js-price-saved">Salvo</span>
                             </form>
                             <form method="post" action="actions/product_delete.php" onsubmit="return confirm('Tem certeza que deseja excluir este produto?');">
@@ -255,6 +367,30 @@ itemConditionSelect.addEventListener('change', toggleUsedTireCondition);
 toggleCategoryFields();
 toggleUsedTireCondition();
 
+document.querySelectorAll('.js-filter-dropdown').forEach((dropdown) => {
+    const toggle = dropdown.querySelector('.js-filter-toggle');
+    const menu = dropdown.querySelector('.js-filter-menu');
+    if (!toggle || !menu) {
+        return;
+    }
+
+    toggle.addEventListener('click', () => {
+        document.querySelectorAll('.js-filter-menu').forEach((otherMenu) => {
+            if (otherMenu !== menu) {
+                otherMenu.classList.add('hidden');
+            }
+        });
+        menu.classList.toggle('hidden');
+    });
+});
+
+document.addEventListener('click', (event) => {
+    if (event.target.closest('.js-filter-dropdown')) {
+        return;
+    }
+    document.querySelectorAll('.js-filter-menu').forEach((menu) => menu.classList.add('hidden'));
+});
+
 document.querySelectorAll('.js-price-form').forEach((form) => {
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -280,14 +416,14 @@ document.querySelectorAll('.js-price-form').forEach((form) => {
             });
             const payload = await response.json();
             if (!response.ok || !payload.ok) {
-                throw new Error(payload.error || 'Falha ao salvar preco');
+                throw new Error(payload.error || 'Falha ao salvar produto');
             }
             if (savedLabel) {
                 savedLabel.classList.remove('hidden');
                 setTimeout(() => savedLabel.classList.add('hidden'), 2000);
             }
         } catch (error) {
-            alert(error.message || 'Erro ao salvar preco');
+            alert(error.message || 'Erro ao salvar produto');
         } finally {
             if (submitButton) {
                 submitButton.disabled = false;

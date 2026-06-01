@@ -55,6 +55,8 @@ $fiscalDocumentType = $issueNfe ? 'nfe' : 'none';
 $fiscalStatus = $issueNfe ? 'pending' : 'not_requested';
 $paymentMethod = $_POST['payment_method'] ?? 'dinheiro';
 $paymentStatus = $_POST['payment_status'] ?? 'paid';
+$sellerName = trim((string) ($_POST['seller_name'] ?? ''));
+$allowedSellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
 $dueDate = $_POST['due_date'] ?? date('Y-m-d');
 $returnPage = $_POST['return_page'] ?? 'pdv';
 $allowedReturnPages = ['pdv', 'pdv_mobile', 'pdv_mobile_link'];
@@ -71,11 +73,17 @@ function saleReturnPath(string $returnPage): string
 }
 
 $productIds = $_POST['items']['product_id'] ?? [];
+$productNames = $_POST['items']['product_name'] ?? [];
 $quantities = $_POST['items']['quantity'] ?? [];
 $unitPrices = $_POST['items']['unit_price'] ?? [];
 
 if (!in_array($paymentStatus, ['paid', 'pending'], true)) {
     flash('error', 'Status de pagamento invalido.');
+    redirect(saleReturnPath($returnPage));
+}
+
+if (!in_array($sellerName, $allowedSellers, true)) {
+    flash('error', 'Selecione o vendedor antes de finalizar a venda.');
     redirect(saleReturnPath($returnPage));
 }
 
@@ -89,16 +97,22 @@ $totalAmount = 0.0;
 
 for ($i = 0; $i < count($productIds); $i++) {
     $productId = (int) $productIds[$i];
+    $productName = trim((string) ($productNames[$i] ?? ''));
     $qty = (int) ($quantities[$i] ?? 0);
     $price = (float) ($unitPrices[$i] ?? 0);
 
-    if ($productId <= 0 || $qty <= 0 || $price < 0) {
+    if ($qty <= 0 || $price < 0) {
+        continue;
+    }
+
+    if ($productId <= 0 && $productName === '') {
         continue;
     }
 
     $lineTotal = $qty * $price;
     $items[] = [
         'product_id' => $productId,
+        'product_name' => $productName,
         'quantity' => $qty,
         'unit_price' => $price,
         'line_total' => $lineTotal,
@@ -214,16 +228,37 @@ try {
         ]);
     }
 
-    $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    $saleStmt->execute([$customerId, $customerName ?: null, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
+    $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $saleStmt->execute([$customerId, $customerName ?: null, $sellerName, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
     $saleId = (int) $pdo->lastInsertId();
 
     $stockStmt = $pdo->prepare('SELECT name, stock_qty FROM products WHERE id = ? FOR UPDATE');
+    $findProductByNameStmt = $pdo->prepare('SELECT id, name, stock_qty FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1 FOR UPDATE');
+    $createProductStmt = $pdo->prepare(
+        "INSERT INTO products
+            (name, cost_price, sale_price, stock_qty)
+         VALUES
+            (?, 0, ?, ?)"
+    );
     $saleItemStmt = $pdo->prepare('INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, line_total) VALUES (?, ?, ?, ?, ?)');
     $updateStockStmt = $pdo->prepare('UPDATE products SET stock_qty = ? WHERE id = ?');
     $movementStmt = $pdo->prepare("INSERT INTO stock_movements (product_id, movement_type, quantity, note) VALUES (?, 'out', ?, ?)");
+    $initialMovementStmt = $pdo->prepare("INSERT INTO stock_movements (product_id, movement_type, quantity, note) VALUES (?, 'in', ?, ?)");
 
     foreach ($items as $item) {
+        if ((int) $item['product_id'] <= 0) {
+            $findProductByNameStmt->execute([$item['product_name']]);
+            $existingProduct = $findProductByNameStmt->fetch();
+
+            if ($existingProduct) {
+                $item['product_id'] = (int) $existingProduct['id'];
+            } else {
+                $createProductStmt->execute([$item['product_name'], $item['unit_price'], $item['quantity']]);
+                $item['product_id'] = (int) $pdo->lastInsertId();
+                $initialMovementStmt->execute([$item['product_id'], $item['quantity'], 'Cadastro automatico pelo PDV na venda #' . $saleId]);
+            }
+        }
+
         $stockStmt->execute([$item['product_id']]);
         $product = $stockStmt->fetch();
 

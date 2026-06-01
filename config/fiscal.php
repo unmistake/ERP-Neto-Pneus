@@ -5,11 +5,14 @@ declare(strict_types=1);
 return [
     'focus' => [
         // Ambiente: homologacao ou producao
-        'environment' => getenv('FOCUS_ENV') ?: 'homologacao',
+        'environment' => getenv('FOCUS_ENV') ?: 'producao',
         // Token da Focus NFe
-        'token' => getenv('FOCUS_TOKEN') ?: 'DD4zlsj6oTJOvmzr3LIXGA6SqfqRdXYU',
+        'token' => getenv('FOCUS_TOKEN') ?: 'JU8noXKa22eOPL3IsBMByls4Eov7u6QS',
         // Serie padrao para emissao NFC-e/NF-e
-        'serie' => (int) (getenv('FOCUS_SERIE') ?: 1),
+        'serie' => (int) (getenv('FOCUS_SERIE') ?: 55),
+        // Numero opcional da NF-e. Deixe vazio para a Focus controlar.
+        // Use somente se precisar corrigir a sequencia em producao.
+        'numero' => trim((string) (getenv('FOCUS_NFE_NUMBER') ?: '')),
         // URL opcional para sobrescrever endpoint padrao
         'base_url' => getenv('FOCUS_BASE_URL') ?: '',
 

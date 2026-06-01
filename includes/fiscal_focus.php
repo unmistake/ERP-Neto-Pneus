@@ -60,6 +60,7 @@ function fiscalFocusConfig(): array
         'environment' => $environment === 'producao' ? 'producao' : 'homologacao',
         'token' => $token,
         'serie' => max(1, (int) ($focus['serie'] ?? 1)),
+        'numero' => trim((string) ($focus['numero'] ?? '')),
         'base_url' => rtrim($baseUrl, '/'),
         'issuer' => $focus['issuer'] ?? [],
         'nfe_defaults' => $focus['nfe_defaults'] ?? ($focus['nfce_defaults'] ?? []),
@@ -250,6 +251,10 @@ function fiscalBuildNfePayload(PDO $pdo, int $saleId, string $referenceCode): ar
         ],
         'serie' => (string) $cfg['serie'],
     ];
+
+    if ($cfg['numero'] !== '') {
+        $payload['numero'] = (string) $cfg['numero'];
+    }
 
     $accountingCnpj = fiscalOnlyDigits((string) ($issuer['cpf_cnpj_contabilidade'] ?? ''));
     if ($accountingCnpj !== '') {
