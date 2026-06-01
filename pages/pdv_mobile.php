@@ -1,4 +1,8 @@
 <?php
+if (!isset($pdo) || !$pdo instanceof PDO) {
+    require_once __DIR__ . '/../config/db.php';
+}
+
 function pdvMobileEnsureCustomerSchema(PDO $pdo): void
 {
     $pdo->exec(
@@ -22,7 +26,9 @@ function pdvMobileEnsureCustomerSchema(PDO $pdo): void
     }
 
     require_once __DIR__ . '/../includes/customer_schema.php';
+    require_once __DIR__ . '/../includes/sale_schema.php';
     ensureCustomerAddressSchema($pdo);
+    ensureSaleFiscalSchema($pdo);
 }
 
 pdvMobileEnsureCustomerSchema($pdo);
