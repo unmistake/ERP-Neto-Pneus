@@ -4,6 +4,8 @@
 .env
 .env.local
 
+.deploy/
+
 /storage/
 /cache/
 /tmp/
