@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS sales (
     payment_method VARCHAR(30) NOT NULL,
     payment_status ENUM('paid','pending') NOT NULL DEFAULT 'paid',
     fiscal_document_type ENUM('none','nfe') NOT NULL DEFAULT 'none',
-    fiscal_status ENUM('not_requested','pending','issued','failed') NOT NULL DEFAULT 'not_requested',
+    fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
 );

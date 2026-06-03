@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 function fiscalEnsureSchema(PDO $pdo): void
 {
+    $hasFiscalStatus = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'fiscal_status'")->fetch();
+    if ($hasFiscalStatus) {
+        $pdo->exec("ALTER TABLE sales MODIFY fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested'");
+    }
+
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS fiscal_documents (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -88,7 +93,7 @@ function fiscalFocusRequest(string $method, string $path, array $payload = []): 
     curl_setopt($ch, CURLOPT_USERPWD, $cfg['token'] . ':');
     curl_setopt($ch, CURLOPT_TIMEOUT, 45);
 
-    if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH'], true)) {
+    if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true) && count($payload) > 0) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
@@ -389,7 +394,15 @@ function fiscalClassifyFocusResponse(int $httpStatus, array $body, string $raw):
 
     $focusStatus = strtolower((string) (fiscalExtractValueRecursive($body, ['status']) ?? ''));
 
-    if (in_array($focusStatus, ['erro_autorizacao', 'erro_autorizacao_nfe', 'rejeitado', 'rejeitada', 'cancelado', 'cancelada'], true)) {
+    if (in_array($focusStatus, ['cancelado', 'cancelada'], true)) {
+        return [
+            'document_status' => 'cancelado',
+            'sale_status' => 'cancelled',
+            'message' => $reason ?: 'NF-e cancelada.',
+        ];
+    }
+
+    if (in_array($focusStatus, ['erro_autorizacao', 'erro_autorizacao_nfe', 'rejeitado', 'rejeitada'], true)) {
         return [
             'document_status' => 'rejeitado',
             'sale_status' => 'failed',
@@ -594,5 +607,71 @@ function fiscalDownloadLatestNfeDanfe(PDO $pdo, int $saleId): array
         'filename' => 'nfe-venda-' . $saleId . '.pdf',
         'content_type' => $download['content_type'],
         'content' => $download['content'],
+    ];
+}
+
+function fiscalCancelLatestNfeBySale(PDO $pdo, int $saleId, string $justification): array
+{
+    fiscalEnsureSchema($pdo);
+
+    $justification = trim($justification);
+    $length = mb_strlen($justification);
+    if ($length < 15 || $length > 255) {
+        throw new RuntimeException('A justificativa do cancelamento deve ter entre 15 e 255 caracteres.');
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT id, reference_code, status
+         FROM fiscal_documents
+         WHERE sale_id = ? AND document_type = 'nfe'
+         ORDER BY id DESC
+         LIMIT 1"
+    );
+    $stmt->execute([$saleId]);
+    $doc = $stmt->fetch();
+    if (!$doc) {
+        throw new RuntimeException('Nenhuma NF-e encontrada para cancelar nesta venda.');
+    }
+
+    $referenceCode = (string) $doc['reference_code'];
+    $payload = ['justificativa' => $justification];
+    $response = fiscalFocusRequest('DELETE', '/v2/nfe/' . urlencode($referenceCode), $payload);
+    $status = (int) $response['status'];
+    $body = (array) $response['body'];
+    $raw = (string) ($response['raw'] ?? '');
+    $message = trim((string) (fiscalExtractValueRecursive($body, ['mensagem', 'message', 'xMotivo', 'motivo']) ?? ''));
+
+    $success = $status >= 200 && $status < 300;
+    $docStatus = $success ? 'cancelado' : 'erro_cancelamento';
+    $saleStatus = $success ? 'cancelled' : 'issued';
+
+    $updDoc = $pdo->prepare(
+        'UPDATE fiscal_documents
+         SET status = ?, message = ?, request_payload = ?, response_payload = ?
+         WHERE id = ?'
+    );
+    $updDoc->execute([
+        $docStatus,
+        $message !== '' ? $message : ($success ? 'NF-e cancelada.' : 'Falha ao cancelar NF-e.'),
+        json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        (int) $doc['id'],
+    ]);
+
+    $updSale = $pdo->prepare("UPDATE sales SET fiscal_document_type = 'nfe', fiscal_status = ? WHERE id = ?");
+    $updSale->execute([$saleStatus, $saleId]);
+
+    if (!$success) {
+        throw new RuntimeException('Falha ao cancelar NF-e (HTTP ' . $status . '): ' . ($message !== '' ? $message : $raw));
+    }
+
+    return [
+        'fiscal_document_id' => (int) $doc['id'],
+        'reference_code' => $referenceCode,
+        'focus_http_status' => $status,
+        'focus_response' => $body,
+        'message' => $message !== '' ? $message : 'NF-e cancelada.',
+        'sale_fiscal_status' => 'cancelled',
+        'status' => 'cancelado',
     ];
 }

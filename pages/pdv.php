@@ -69,6 +69,7 @@ foreach ($fiscalExtraColumns as $column => $sql) {
         $pdo->exec($sql);
     }
 }
+$pdo->exec("ALTER TABLE sales MODIFY fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested'");
 $pdo->exec("UPDATE fiscal_documents SET document_type = 'nfe' WHERE document_type = 'nfce' AND reference_code LIKE 'NFE%'");
 $pdo->exec(
     "UPDATE sales s
@@ -219,6 +220,14 @@ if (count($todaySales) > 0) {
                                 <button type="submit" class="text-sky-700 underline mr-3">Sincronizar NF-e</button>
                             </form>
                             <a href="actions/fiscal_download_pdf.php?sale_id=<?= (int) $sale['id'] ?>" class="text-slate-700 underline mr-3">PDF NF-e</a>
+                            <?php if (($sale['fiscal_status'] ?? '') === 'issued'): ?>
+                                <form method="post" action="actions/fiscal_cancel.php" class="inline" onsubmit="return confirm('Confirmar cancelamento da NF-e desta venda? Esta acao sera enviada para a SEFAZ.');">
+                                    <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                    <input type="hidden" name="return_page" value="pdv">
+                                    <input type="text" name="justification" minlength="15" maxlength="255" required value="Cancelamento por erro nos valores de quantidade e preco unitario." class="border rounded px-2 py-1 text-xs w-80 mr-2">
+                                    <button type="submit" class="text-orange-700 underline mr-3">Cancelar NF-e</button>
+                                </form>
+                            <?php endif; ?>
                         <?php endif; ?>
                         <form method="post" action="actions/sale_delete.php" class="inline" onsubmit="return confirm('Tem certeza que deseja excluir esta venda?');">
                             <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">

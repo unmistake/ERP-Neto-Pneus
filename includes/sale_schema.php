@@ -16,6 +16,8 @@ function ensureSaleFiscalSchema(PDO $pdo): void
 
     $hasFiscalStatus = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'fiscal_status'")->fetch();
     if (!$hasFiscalStatus) {
-        $pdo->exec("ALTER TABLE sales ADD COLUMN fiscal_status ENUM('not_requested','pending','issued','failed') NOT NULL DEFAULT 'not_requested' AFTER fiscal_document_type");
+        $pdo->exec("ALTER TABLE sales ADD COLUMN fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested' AFTER fiscal_document_type");
+    } else {
+        $pdo->exec("ALTER TABLE sales MODIFY fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested'");
     }
 }
