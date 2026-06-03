@@ -1,4 +1,8 @@
 <?php
+require_once __DIR__ . '/../includes/product_schema.php';
+
+ensureProductExtendedSchema($pdo);
+
 $hasLocationColumn = (bool) $pdo->query("SHOW COLUMNS FROM products LIKE 'location'")->fetch();
 if (!$hasLocationColumn) {
     $pdo->exec("ALTER TABLE products ADD COLUMN location VARCHAR(120) NULL AFTER model");
@@ -85,14 +89,22 @@ $usedTireConditionFilters = inventoryFilterValues('used_tire_condition');
 $brandFilters = inventoryFilterValues('brand_filter');
 $modelFilters = inventoryFilterValues('model_filter');
 $locationFilters = inventoryFilterValues('location_filter');
+$carFilters = inventoryFilterValues('car_filter');
 
 $allProducts = $pdo->query('SELECT * FROM products ORDER BY name')->fetchAll();
+$allProductCarMap = productCarsMap($pdo, array_column($allProducts, 'id'));
+$allCarOptions = $pdo->query('SELECT name FROM cars ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
 $where = [];
 $params = [];
 if ($search !== '') {
-    $where[] = '(name LIKE ? OR brand LIKE ? OR model LIKE ? OR location LIKE ?)';
+    $where[] = "(name LIKE ? OR brand LIKE ? OR model LIKE ? OR location LIKE ? OR EXISTS (
+        SELECT 1 FROM product_cars pc_search
+        INNER JOIN cars c_search ON c_search.id = pc_search.car_id
+        WHERE pc_search.product_id = products.id AND c_search.name LIKE ?
+    ))";
     $like = '%' . $search . '%';
+    $params[] = $like;
     $params[] = $like;
     $params[] = $like;
     $params[] = $like;
@@ -157,6 +169,16 @@ if (count($locationFilters) > 0) {
     array_push($params, ...$locationFilters);
 }
 
+if (count($carFilters) > 0) {
+    $where[] = "EXISTS (
+        SELECT 1 FROM product_cars pc_filter
+        INNER JOIN cars c_filter ON c_filter.id = pc_filter.car_id
+        WHERE pc_filter.product_id = products.id
+        AND c_filter.name IN (" . implode(',', array_fill(0, count($carFilters), '?')) . ")
+    )";
+    array_push($params, ...$carFilters);
+}
+
 $sql = 'SELECT * FROM products';
 if (count($where) > 0) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -166,6 +188,7 @@ $sql .= ' ORDER BY created_at DESC';
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $products = $stmt->fetchAll();
+$productCarMap = productCarsMap($pdo, array_column($products, 'id'));
 ?>
 
 <h2 class="text-2xl font-bold mb-4">Gestao de Estoque</h2>
@@ -182,6 +205,7 @@ $products = $stmt->fetchAll();
         inventoryRenderFilterDropdown('brand_filter', 'Marca', inventoryDistinctOptions($allProducts, 'brand'), $brandFilters);
         inventoryRenderFilterDropdown('model_filter', 'Modelo', inventoryDistinctOptions($allProducts, 'model'), $modelFilters);
         inventoryRenderFilterDropdown('location_filter', 'Local', inventoryDistinctOptions($allProducts, 'location'), $locationFilters);
+        inventoryRenderFilterDropdown('car_filter', 'Carro', $allCarOptions, $carFilters);
         inventoryRenderFilterDropdown('category_filter', 'Categoria', ['pneu', 'roda'], $categoryFilters, ['pneu' => 'Pneu', 'roda' => 'Roda']);
         inventoryRenderFilterDropdown('condition_filter', 'Estado', ['novo', 'usado'], $conditionFilters, ['novo' => 'Novo', 'usado' => 'Usado']);
         inventoryRenderFilterDropdown('used_tire_condition', 'Classificacao usado', $validUsedTireConditions, $usedTireConditionFilters, [
@@ -200,7 +224,7 @@ $products = $stmt->fetchAll();
 </form>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-    <form class="bg-white p-4 rounded-lg shadow space-y-3" method="post" action="actions/product_save.php">
+    <form class="bg-white p-4 rounded-lg shadow space-y-3" method="post" action="actions/product_save.php" enctype="multipart/form-data">
         <h3 class="font-semibold">Novo produto</h3>
         <input required name="name" placeholder="Nome do pneu" class="w-full border rounded px-3 py-2">
         <select name="category" id="category" class="w-full border rounded px-3 py-2">
@@ -222,6 +246,11 @@ $products = $stmt->fetchAll();
         </div>
         <input name="brand" placeholder="Marca" class="w-full border rounded px-3 py-2">
         <input name="model" placeholder="Modelo" class="w-full border rounded px-3 py-2">
+        <input name="cars" placeholder="Carros compativeis (separe por virgula)" class="w-full border rounded px-3 py-2">
+        <label class="block text-sm text-slate-600">
+            Imagem do produto
+            <input type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif" class="mt-1 w-full border rounded px-3 py-2 bg-white">
+        </label>
         <div id="pneu-fields" class="grid grid-cols-3 gap-2">
             <input name="width" placeholder="Largura" class="w-full border rounded px-3 py-2">
             <input name="profile" placeholder="Perfil" class="w-full border rounded px-3 py-2">
@@ -260,12 +289,14 @@ $products = $stmt->fetchAll();
         <thead class="bg-slate-200">
             <tr>
                 <th class="p-3 text-left">Produto</th>
+                <th class="p-3 text-left">Imagem</th>
                 <th class="p-3 text-left">Categoria</th>
                 <th class="p-3 text-left">Estado</th>
                 <th class="p-3 text-left">Classificacao Usado</th>
                 <th class="p-3 text-left">Marca</th>
                 <th class="p-3 text-left">Modelo</th>
                 <th class="p-3 text-left">Medidas</th>
+                <th class="p-3 text-left">Carros</th>
                 <th class="p-3 text-left">Local</th>
                 <th class="p-3 text-left">Custo</th>
                 <th class="p-3 text-left">Preco</th>
@@ -276,13 +307,21 @@ $products = $stmt->fetchAll();
         <tbody>
             <?php if (count($products) === 0): ?>
                 <tr class="border-t">
-                    <td class="p-3" colspan="12">Nenhum produto encontrado com os filtros informados.</td>
+                    <td class="p-3" colspan="14">Nenhum produto encontrado com os filtros informados.</td>
                 </tr>
             <?php endif; ?>
             <?php foreach ($products as $product): ?>
                 <tr class="border-t">
                     <td class="p-3">
                         <input form="price-form-<?= (int) $product['id'] ?>" required name="name" value="<?= htmlspecialchars((string) $product['name']) ?>" class="w-56 border rounded px-2 py-1">
+                    </td>
+                    <td class="p-3">
+                        <?php if (!empty($product['image_path'])): ?>
+                            <img src="<?= htmlspecialchars((string) $product['image_path']) ?>" alt="<?= htmlspecialchars((string) $product['name']) ?>" class="h-14 w-14 rounded object-cover border mb-2">
+                        <?php else: ?>
+                            <div class="h-14 w-14 rounded border bg-slate-100 text-slate-400 flex items-center justify-center text-xs mb-2">Sem foto</div>
+                        <?php endif; ?>
+                        <input form="price-form-<?= (int) $product['id'] ?>" type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif" class="w-36 text-xs">
                     </td>
                     <td class="p-3"><?= ($product['category'] ?? 'pneu') === 'roda' ? 'Roda' : 'Pneu' ?></td>
                     <td class="p-3"><?= ($product['item_condition'] ?? 'novo') === 'usado' ? 'Usado' : 'Novo' ?></td>
@@ -311,6 +350,9 @@ $products = $stmt->fetchAll();
                             <?= htmlspecialchars((string) ($product['rim'] ?? '-')) ?>
                         <?php endif; ?>
                     </td>
+                    <td class="p-3">
+                        <input form="price-form-<?= (int) $product['id'] ?>" name="cars" value="<?= htmlspecialchars(productCarsText($productCarMap[(int) $product['id']] ?? [])) ?>" class="w-52 border rounded px-2 py-1" placeholder="Ex: Civic, Corolla">
+                    </td>
                     <td class="p-3"><?= htmlspecialchars((string) ($product['location'] ?? '-')) ?></td>
                     <td class="p-3">
                         <input form="price-form-<?= (int) $product['id'] ?>" min="0" step="0.01" type="number" name="cost_price" value="<?= htmlspecialchars((string) $product['cost_price']) ?>" class="w-28 border rounded px-2 py-1">
@@ -321,7 +363,7 @@ $products = $stmt->fetchAll();
                     <td class="p-3 font-bold"><?= (int) $product['stock_qty'] ?></td>
                     <td class="p-3">
                         <div class="flex items-center gap-3">
-                            <form id="price-form-<?= (int) $product['id'] ?>" class="js-price-form" method="post" action="actions/product_update_prices.php">
+                            <form id="price-form-<?= (int) $product['id'] ?>" class="js-price-form" method="post" action="actions/product_update_prices.php" enctype="multipart/form-data">
                                 <input type="hidden" name="product_id" value="<?= (int) $product['id'] ?>">
                                 <button type="submit" class="text-sky-700 underline">Salvar</button>
                                 <span class="ml-2 text-xs text-emerald-700 hidden js-price-saved">Salvo</span>

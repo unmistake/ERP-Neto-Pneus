@@ -6,6 +6,7 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/fiscal_focus.php';
 require_once __DIR__ . '/../includes/sale_schema.php';
 require_once __DIR__ . '/../includes/bank_schema.php';
+require_once __DIR__ . '/../includes/product_schema.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -39,6 +40,7 @@ function ensureSchema(PDO $pdo): void
             profile VARCHAR(10) NULL,
             rim VARCHAR(10) NULL,
             location VARCHAR(120) NULL,
+            image_path VARCHAR(255) NULL,
             cost_price DECIMAL(10,2) NOT NULL DEFAULT 0,
             sale_price DECIMAL(10,2) NOT NULL DEFAULT 0,
             stock_qty INT NOT NULL DEFAULT 0,
@@ -75,6 +77,7 @@ function ensureSchema(PDO $pdo): void
     if (!$hasLocation) {
         $pdo->exec("ALTER TABLE products ADD COLUMN location VARCHAR(120) NULL AFTER model");
     }
+    ensureProductExtendedSchema($pdo);
     $pdo->exec("UPDATE products SET location = 'Depósito' WHERE LOWER(TRIM(location)) = 'no andar de cima da loja' OR LOWER(TRIM(location)) = 'andar de cima da loja'");
 
     $pdo->exec(
@@ -491,7 +494,7 @@ if ($segments[0] === 'products' && $method === 'GET' && count($segments) === 1) 
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, cost_price, sale_price AS price, stock_qty, created_at
+    $sql = "SELECT id, name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price AS price, stock_qty, created_at
             FROM products
             $whereSql
             ORDER BY id DESC
@@ -499,6 +502,11 @@ if ($segments[0] === 'products' && $method === 'GET' && count($segments) === 1) 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    $carMap = productCarsMap($pdo, array_column($rows, 'id'));
+    foreach ($rows as &$row) {
+        $row['cars'] = $carMap[(int) $row['id']] ?? [];
+    }
+    unset($row);
     apiResponse(200, ['ok' => true] + paginatedResponse($rows, $total, $page, $limit));
 }
 
@@ -513,6 +521,8 @@ if ($segments[0] === 'products' && $method === 'POST' && count($segments) === 1)
     $profile = trim((string) ($body['profile'] ?? ''));
     $rim = trim((string) ($body['rim'] ?? ''));
     $location = trim((string) ($body['location'] ?? ''));
+    $imagePath = trim((string) ($body['image_path'] ?? ''));
+    $cars = parseProductCars($body['cars'] ?? []);
     $costPrice = (float) ($body['cost_price'] ?? 0);
     $salePrice = (float) ($body['price'] ?? ($body['sale_price'] ?? 0));
     $stockQty = (int) ($body['stock_qty'] ?? 0);
@@ -537,14 +547,17 @@ if ($segments[0] === 'products' && $method === 'POST' && count($segments) === 1)
         apiResponse(422, ['ok' => false, 'error' => 'Campos invalidos para produto.']);
     }
 
-    $stmt = $pdo->prepare('INSERT INTO products (name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    $stmt->execute([$name, $category, $itemCondition, ($category === 'pneu' && $itemCondition === 'usado') ? $usedTireCondition : null, $brand ?: null, $model ?: null, $width ?: null, $profile ?: null, $rim ?: null, $location ?: null, $costPrice, $salePrice, $stockQty]);
+    $pdo->beginTransaction();
+    $stmt = $pdo->prepare('INSERT INTO products (name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$name, $category, $itemCondition, ($category === 'pneu' && $itemCondition === 'usado') ? $usedTireCondition : null, $brand ?: null, $model ?: null, $width ?: null, $profile ?: null, $rim ?: null, $location ?: null, $imagePath ?: null, $costPrice, $salePrice, $stockQty]);
     $productId = (int) $pdo->lastInsertId();
+    syncProductCars($pdo, $productId, $cars);
 
     if ($stockQty > 0) {
         $mv = $pdo->prepare('INSERT INTO stock_movements (product_id, movement_type, quantity, note) VALUES (?, ?, ?, ?)');
         $mv->execute([$productId, 'in', $stockQty, 'Estoque inicial via API']);
     }
+    $pdo->commit();
 
     apiResponse(201, ['ok' => true, 'data' => ['id' => $productId]]);
 }
@@ -615,7 +628,7 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
         apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
     }
 
-    $stmt = $pdo->prepare('SELECT id, name, brand, model, cost_price, sale_price, stock_qty FROM products WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, name, brand, model, image_path, cost_price, sale_price, stock_qty FROM products WHERE id = ?');
     $stmt->execute([$id]);
     $current = $stmt->fetch();
     if (!$current) {
@@ -625,13 +638,20 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
     $name = array_key_exists('name', $body) ? trim((string) $body['name']) : (string) $current['name'];
     $brand = array_key_exists('brand', $body) ? trim((string) $body['brand']) : (string) ($current['brand'] ?? '');
     $model = array_key_exists('model', $body) ? trim((string) $body['model']) : (string) ($current['model'] ?? '');
+    $imagePath = array_key_exists('image_path', $body) ? trim((string) $body['image_path']) : (string) ($current['image_path'] ?? '');
+    $cars = array_key_exists('cars', $body) ? parseProductCars($body['cars']) : null;
 
     if ($name === '') {
         apiResponse(422, ['ok' => false, 'error' => 'Nome do produto nao pode ser vazio.']);
     }
 
-    $upd = $pdo->prepare('UPDATE products SET name = ?, brand = ?, model = ? WHERE id = ?');
-    $upd->execute([$name, $brand ?: null, $model ?: null, $id]);
+    $pdo->beginTransaction();
+    $upd = $pdo->prepare('UPDATE products SET name = ?, brand = ?, model = ?, image_path = ? WHERE id = ?');
+    $upd->execute([$name, $brand ?: null, $model ?: null, $imagePath ?: null, $id]);
+    if ($cars !== null) {
+        syncProductCars($pdo, $id, $cars);
+    }
+    $pdo->commit();
 
     apiResponse(200, [
         'ok' => true,
@@ -640,6 +660,8 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
             'name' => $name,
             'brand' => $brand,
             'model' => $model,
+            'image_path' => $imagePath,
+            'cars' => $cars,
         ],
     ]);
 }
