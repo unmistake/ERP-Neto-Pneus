@@ -10,15 +10,24 @@ $totals = [
 
 $dailyRows = $pdo->query(
     "SELECT
-        DATE(s.created_at) AS sale_date,
-        COALESCE(SUM(s.total_amount), 0) AS revenue,
-        COALESCE(SUM(si.quantity * p.cost_price), 0) AS cost_total
-     FROM sales s
-     LEFT JOIN sale_items si ON si.sale_id = s.id
-     LEFT JOIN products p ON p.id = si.product_id
-     WHERE s.created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
-     GROUP BY DATE(s.created_at)
-     ORDER BY sale_date ASC"
+        daily_sales.sale_date,
+        daily_sales.revenue,
+        COALESCE(daily_costs.cost_total, 0) AS cost_total
+     FROM (
+        SELECT DATE(created_at) AS sale_date, COALESCE(SUM(total_amount), 0) AS revenue
+        FROM sales
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+        GROUP BY DATE(created_at)
+     ) daily_sales
+     LEFT JOIN (
+        SELECT DATE(s.created_at) AS sale_date, COALESCE(SUM(si.quantity * p.cost_price), 0) AS cost_total
+        FROM sales s
+        INNER JOIN sale_items si ON si.sale_id = s.id
+        INNER JOIN products p ON p.id = si.product_id
+        WHERE s.created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+        GROUP BY DATE(s.created_at)
+     ) daily_costs ON daily_costs.sale_date = daily_sales.sale_date
+     ORDER BY daily_sales.sale_date ASC"
 )->fetchAll();
 
 $dailyMap = [];
