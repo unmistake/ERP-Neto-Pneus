@@ -187,6 +187,42 @@ function customerFullName(array $customer): string
     return trim(($customer['first_name'] ?? '') . ' ' . ($customer['last_name'] ?? ''));
 }
 
+function apiDigitsOnly(string $value): string
+{
+    return preg_replace('/\D+/', '', $value) ?? '';
+}
+
+function apiPhoneMatches(string $storedPhone, string $providedPhone): bool
+{
+    $stored = apiDigitsOnly($storedPhone);
+    $provided = apiDigitsOnly($providedPhone);
+    if ($stored === '' || $provided === '') {
+        return false;
+    }
+
+    return $stored === $provided || str_ends_with($stored, $provided) || str_ends_with($provided, $stored);
+}
+
+function apiMaskTaxId(string $taxId): string
+{
+    $digits = apiDigitsOnly($taxId);
+    if (strlen($digits) <= 4) {
+        return str_repeat('*', strlen($digits));
+    }
+
+    return substr($digits, 0, 3) . str_repeat('*', max(0, strlen($digits) - 5)) . substr($digits, -2);
+}
+
+function apiMaskPhone(string $phone): string
+{
+    $digits = apiDigitsOnly($phone);
+    if (strlen($digits) <= 4) {
+        return str_repeat('*', strlen($digits));
+    }
+
+    return str_repeat('*', max(0, strlen($digits) - 4)) . substr($digits, -4);
+}
+
 function parseRoute(): array
 {
     $uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
@@ -530,6 +566,7 @@ if (count($segments) === 0) {
             '/health',
             '/products',
             '/customers',
+            '/customer-auth/login',
             '/customers/{id}',
             '/sales',
             '/sales/{id}',
@@ -543,6 +580,42 @@ if (count($segments) === 0) {
             '/bank-transactions',
             '/bank-transactions/{id}',
             '/bank-transactions/summary',
+        ],
+    ]);
+}
+
+if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'login' && $method === 'POST' && count($segments) === 2) {
+    $taxId = apiDigitsOnly((string) ($body['tax_id'] ?? ''));
+    $phone = apiDigitsOnly((string) ($body['phone'] ?? ''));
+
+    if ($taxId === '' || $phone === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Informe CPF/CNPJ e telefone.']);
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT id, first_name, last_name, phone, tax_id, car, created_at
+         FROM customers
+         WHERE REPLACE(REPLACE(REPLACE(REPLACE(tax_id, '.', ''), '-', ''), '/', ''), ' ', '') = ?
+         LIMIT 1"
+    );
+    $stmt->execute([$taxId]);
+    $customer = $stmt->fetch();
+
+    if (!$customer || !apiPhoneMatches((string) $customer['phone'], $phone)) {
+        apiResponse(401, ['ok' => false, 'error' => 'Cliente nao encontrado para os dados informados.']);
+    }
+
+    apiResponse(200, [
+        'ok' => true,
+        'data' => [
+            'id' => (int) $customer['id'],
+            'first_name' => $customer['first_name'],
+            'last_name' => $customer['last_name'],
+            'full_name' => customerFullName($customer),
+            'phone_masked' => apiMaskPhone((string) $customer['phone']),
+            'tax_id_masked' => apiMaskTaxId((string) $customer['tax_id']),
+            'car' => $customer['car'],
+            'created_at' => $customer['created_at'],
         ],
     ]);
 }
