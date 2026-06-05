@@ -241,6 +241,29 @@ function paginatedResponse(array $rows, int $total, int $page, int $limit): arra
     ];
 }
 
+function apiPublicBaseUrl(): string
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $scheme = $https ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'erp-netorodas.online';
+
+    return $scheme . '://' . $host;
+}
+
+function apiPublicImageUrl(?string $path): ?string
+{
+    $path = trim((string) $path);
+    if ($path === '') {
+        return null;
+    }
+    if (preg_match('/^https?:\/\//i', $path) === 1) {
+        return $path;
+    }
+
+    return rtrim(apiPublicBaseUrl(), '/') . '/' . ltrim($path, '/');
+}
+
 function fetchSaleWithItems(PDO $pdo, int $saleId): array
 {
     $saleStmt = $pdo->prepare('SELECT id, customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales WHERE id = ?');
@@ -399,15 +422,6 @@ function createSale(PDO $pdo, array $body): int
     }
 }
 
-ensureSchema($pdo);
-
-$apiConfig = require __DIR__ . '/../config/api.php';
-$expectedToken = (string) ($apiConfig['token'] ?? '');
-$providedToken = getBearerToken();
-if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {
-    apiResponse(401, ['ok' => false, 'error' => 'Nao autorizado.']);
-}
-
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $body = readJsonBody();
 $segments = parseRoute();
@@ -422,6 +436,89 @@ if (count($segments) === 0 && isset($_GET['resource'])) {
     } else {
         $segments = [$resource];
     }
+}
+
+ensureSchema($pdo);
+
+if (($segments[0] ?? '') === 'public' && ($segments[1] ?? '') === 'products' && $method === 'GET') {
+    [$page, $limit, $offset] = getPaginationParams(24, 100);
+    $q = trim((string) ($_GET['q'] ?? ''));
+    $category = trim((string) ($_GET['category'] ?? ''));
+    $brand = trim((string) ($_GET['brand'] ?? ''));
+    $rim = trim((string) ($_GET['rim'] ?? ''));
+    $car = trim((string) ($_GET['car'] ?? ''));
+
+    $where = ["p.image_path IS NOT NULL", "TRIM(p.image_path) <> ''"];
+    $params = [];
+
+    if ($q !== '') {
+        $where[] = '(p.name LIKE ? OR p.brand LIKE ? OR p.model LIKE ? OR p.width LIKE ? OR p.profile LIKE ? OR p.rim LIKE ?)';
+        $like = '%' . $q . '%';
+        array_push($params, $like, $like, $like, $like, $like, $like);
+    }
+    if (in_array($category, ['pneu', 'roda'], true)) {
+        $where[] = 'p.category = ?';
+        $params[] = $category;
+    }
+    if ($brand !== '') {
+        $where[] = 'p.brand = ?';
+        $params[] = $brand;
+    }
+    if ($rim !== '') {
+        $where[] = 'p.rim = ?';
+        $params[] = $rim;
+    }
+    if ($car !== '') {
+        $where[] = "EXISTS (
+            SELECT 1 FROM product_cars pc_filter
+            INNER JOIN cars c_filter ON c_filter.id = pc_filter.car_id
+            WHERE pc_filter.product_id = p.id AND c_filter.name = ?
+        )";
+        $params[] = $car;
+    }
+
+    $whereSql = 'WHERE ' . implode(' AND ', $where);
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM products p $whereSql");
+    $countStmt->execute($params);
+    $total = (int) $countStmt->fetchColumn();
+
+    $stmt = $pdo->prepare(
+        "SELECT p.id, p.name, p.category, p.item_condition, p.used_tire_condition,
+                p.brand, p.model, p.width, p.profile, p.rim, p.location,
+                p.image_path, p.sale_price AS price, p.stock_qty
+         FROM products p
+         $whereSql
+         ORDER BY p.stock_qty > 0 DESC, p.created_at DESC
+         LIMIT $limit OFFSET $offset"
+    );
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    $carMap = productCarsMap($pdo, array_column($rows, 'id'));
+
+    foreach ($rows as &$row) {
+        $row['price'] = (float) $row['price'];
+        $row['stock_qty'] = (int) $row['stock_qty'];
+        $row['available'] = ((int) $row['stock_qty']) > 0;
+        $row['image_url'] = apiPublicImageUrl($row['image_path'] ?? null);
+        unset($row['image_path']);
+        $row['cars'] = $carMap[(int) $row['id']] ?? [];
+    }
+    unset($row);
+
+    $filters = [
+        'brands' => $pdo->query("SELECT DISTINCT brand FROM products WHERE image_path IS NOT NULL AND TRIM(image_path) <> '' AND brand IS NOT NULL AND TRIM(brand) <> '' ORDER BY brand")->fetchAll(PDO::FETCH_COLUMN),
+        'rims' => $pdo->query("SELECT DISTINCT rim FROM products WHERE image_path IS NOT NULL AND TRIM(image_path) <> '' AND rim IS NOT NULL AND TRIM(rim) <> '' ORDER BY rim")->fetchAll(PDO::FETCH_COLUMN),
+        'cars' => $pdo->query("SELECT DISTINCT c.name FROM cars c INNER JOIN product_cars pc ON pc.car_id = c.id INNER JOIN products p ON p.id = pc.product_id WHERE p.image_path IS NOT NULL AND TRIM(p.image_path) <> '' ORDER BY c.name")->fetchAll(PDO::FETCH_COLUMN),
+    ];
+
+    apiResponse(200, ['ok' => true, 'filters' => $filters] + paginatedResponse($rows, $total, $page, $limit));
+}
+
+$apiConfig = require __DIR__ . '/../config/api.php';
+$expectedToken = (string) ($apiConfig['token'] ?? '');
+$providedToken = getBearerToken();
+if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {
+    apiResponse(401, ['ok' => false, 'error' => 'Nao autorizado.']);
 }
 
 if (count($segments) === 0) {
