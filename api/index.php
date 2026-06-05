@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/fiscal_focus.php';
 require_once __DIR__ . '/../includes/sale_schema.php';
 require_once __DIR__ . '/../includes/bank_schema.php';
 require_once __DIR__ . '/../includes/product_schema.php';
+require_once __DIR__ . '/../includes/customer_schema.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -93,6 +94,7 @@ function ensureSchema(PDO $pdo): void
             UNIQUE KEY uk_customers_tax_id (tax_id)
         )"
     );
+    ensureCustomerAddressSchema($pdo);
 
     $hasCustomerId = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'customer_id'")->fetch();
     if (!$hasCustomerId) {
@@ -567,6 +569,7 @@ if (count($segments) === 0) {
             '/products',
             '/customers',
             '/customer-auth/login',
+            '/customer-auth/register',
             '/customers/{id}',
             '/sales',
             '/sales/{id}',
@@ -580,6 +583,73 @@ if (count($segments) === 0) {
             '/bank-transactions',
             '/bank-transactions/{id}',
             '/bank-transactions/summary',
+        ],
+    ]);
+}
+
+if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'register' && $method === 'POST' && count($segments) === 2) {
+    $firstName = trim((string) ($body['first_name'] ?? ''));
+    $lastName = trim((string) ($body['last_name'] ?? ''));
+    $phone = trim((string) ($body['phone'] ?? ''));
+    $taxId = trim((string) ($body['tax_id'] ?? ''));
+    $notes = trim((string) ($body['notes'] ?? ''));
+    $addressStreet = trim((string) ($body['address_street'] ?? ''));
+    $addressNumber = trim((string) ($body['address_number'] ?? ''));
+    $addressDistrict = trim((string) ($body['address_district'] ?? ''));
+    $addressCity = trim((string) ($body['address_city'] ?? ''));
+    $addressState = strtoupper(substr(trim((string) ($body['address_state'] ?? '')), 0, 2));
+    $addressZip = trim((string) ($body['address_zip'] ?? ''));
+    $addressCountry = trim((string) ($body['address_country'] ?? 'Brasil'));
+
+    if ($firstName === '' || $lastName === '' || $phone === '' || $taxId === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Campos obrigatorios: first_name, last_name, phone, tax_id.']);
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO customers
+                (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $firstName,
+            $lastName,
+            $phone,
+            $taxId,
+            $notes ?: 'Criado pela loja online.',
+            $addressStreet ?: null,
+            $addressNumber ?: null,
+            $addressDistrict ?: null,
+            $addressCity ?: null,
+            $addressState ?: null,
+            $addressZip ?: null,
+            $addressCountry ?: 'Brasil',
+        ]);
+    } catch (Throwable $e) {
+        apiResponse(409, ['ok' => false, 'error' => 'Nao foi possivel criar cliente. CPF/CNPJ pode ja estar cadastrado.']);
+    }
+
+    $customer = [
+        'id' => (int) $pdo->lastInsertId(),
+        'first_name' => $firstName,
+        'last_name' => $lastName,
+        'phone' => $phone,
+        'tax_id' => $taxId,
+        'car' => null,
+        'created_at' => date('Y-m-d H:i:s'),
+    ];
+
+    apiResponse(201, [
+        'ok' => true,
+        'data' => [
+            'id' => (int) $customer['id'],
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'full_name' => customerFullName($customer),
+            'phone_masked' => apiMaskPhone($phone),
+            'tax_id_masked' => apiMaskTaxId($taxId),
+            'car' => null,
+            'created_at' => $customer['created_at'],
         ],
     ]);
 }
