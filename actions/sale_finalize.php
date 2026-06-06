@@ -61,6 +61,7 @@ $paymentStatus = $_POST['payment_status'] ?? 'paid';
 $sellerName = trim((string) ($_POST['seller_name'] ?? ''));
 $allowedSellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
 $dueDate = $_POST['due_date'] ?? date('Y-m-d');
+$requestToken = strtolower(trim((string) ($_POST['request_token'] ?? '')));
 $returnPage = $_POST['return_page'] ?? 'pdv';
 $allowedReturnPages = ['pdv', 'pdv_mobile', 'pdv_mobile_link'];
 if (!in_array($returnPage, $allowedReturnPages, true)) {
@@ -87,6 +88,11 @@ if (!in_array($paymentStatus, ['paid', 'pending'], true)) {
 
 if (!in_array($sellerName, $allowedSellers, true)) {
     flash('error', 'Selecione o vendedor antes de finalizar a venda.');
+    redirect(saleReturnPath($returnPage));
+}
+
+if (!preg_match('/^[a-f0-9]{64}$/', $requestToken)) {
+    flash('error', 'A sessao da venda expirou. Recarregue o PDV e tente novamente.');
     redirect(saleReturnPath($returnPage));
 }
 
@@ -237,8 +243,8 @@ try {
         ]);
     }
 
-    $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    $saleStmt->execute([$customerId, $customerName ?: null, $sellerName, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
+    $saleStmt = $pdo->prepare('INSERT INTO sales (request_token, customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $saleStmt->execute([$requestToken, $customerId, $customerName ?: null, $sellerName, $totalAmount, $paymentMethod, $paymentStatus, $fiscalDocumentType, $fiscalStatus]);
     $saleId = (int) $pdo->lastInsertId();
 
     $stockStmt = $pdo->prepare('SELECT name, stock_qty FROM products WHERE id = ? FOR UPDATE');
@@ -294,7 +300,16 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    flash('error', 'Erro ao finalizar venda: ' . $e->getMessage());
+
+    $isRepeatedRequest = $e instanceof PDOException
+        && (int) ($e->errorInfo[1] ?? 0) === 1062
+        && str_contains($e->getMessage(), 'uk_sales_request_token');
+
+    if ($isRepeatedRequest) {
+        flash('success', 'Esta venda ja havia sido finalizada. O envio repetido foi ignorado.');
+    } else {
+        flash('error', 'Erro ao finalizar venda: ' . $e->getMessage());
+    }
 }
 
 redirect(saleReturnPath($returnPage));

@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 function ensureSaleFiscalSchema(PDO $pdo): void
 {
+    $hasRequestToken = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'request_token'")->fetch();
+    if (!$hasRequestToken) {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN request_token VARCHAR(64) NULL AFTER id");
+    }
+
+    $hasRequestTokenIndex = (bool) $pdo->query("SHOW INDEX FROM sales WHERE Key_name = 'uk_sales_request_token'")->fetch();
+    if (!$hasRequestTokenIndex) {
+        $pdo->exec('ALTER TABLE sales ADD UNIQUE KEY uk_sales_request_token (request_token)');
+    }
+
     $hasSellerName = (bool) $pdo->query("SHOW COLUMNS FROM sales LIKE 'seller_name'")->fetch();
     if (!$hasSellerName) {
         $pdo->exec("ALTER TABLE sales ADD COLUMN seller_name VARCHAR(40) NULL AFTER customer_name");

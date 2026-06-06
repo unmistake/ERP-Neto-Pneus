@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE TABLE IF NOT EXISTS sales (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    request_token VARCHAR(64) NULL,
     customer_id INT NULL,
     customer_name VARCHAR(120) NULL,
     seller_name VARCHAR(40) NULL,
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS sales (
     fiscal_document_type ENUM('none','nfe') NOT NULL DEFAULT 'none',
     fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_sales_request_token (request_token),
     CONSTRAINT fk_sales_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
 );
 

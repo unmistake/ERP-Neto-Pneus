@@ -36,6 +36,7 @@ $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, '
 $todaySales = $pdo->query('SELECT id, customer_name, seller_name, total_amount, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
 $salesDetails = [];
 $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
+$saleRequestToken = bin2hex(random_bytes(32));
 
 $pdo->exec(
     "CREATE TABLE IF NOT EXISTS fiscal_documents (
@@ -129,7 +130,8 @@ if (count($todaySales) > 0) {
 
 <h2 class="text-2xl font-bold mb-4">PDV Rapido</h2>
 
-<form method="post" action="actions/sale_finalize.php" class="bg-white rounded-lg shadow p-4 mb-6">
+<form method="post" action="actions/sale_finalize.php" data-sale-form class="bg-white rounded-lg shadow p-4 mb-6">
+    <input type="hidden" name="request_token" value="<?= htmlspecialchars($saleRequestToken) ?>">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div class="relative">
             <input type="hidden" name="customer_id" id="customer_id">
@@ -176,7 +178,7 @@ if (count($todaySales) > 0) {
     <div id="items" class="space-y-2"></div>
     <button type="button" onclick="addItem()" class="mb-4 bg-slate-200 rounded px-3 py-2 text-sm">+ Adicionar item</button>
 
-    <button class="w-full bg-emerald-600 text-white rounded px-4 py-2">Finalizar venda</button>
+    <button data-sale-submit class="w-full bg-emerald-600 text-white rounded px-4 py-2 disabled:cursor-not-allowed disabled:bg-emerald-400">Finalizar venda</button>
 </form>
 
 <div class="bg-white rounded-lg shadow overflow-auto">
@@ -286,6 +288,19 @@ const saleDetailsPanel = document.getElementById('sale-details-panel');
 const saleDetailsTitle = document.getElementById('sale-details-title');
 const saleDetailsMeta = document.getElementById('sale-details-meta');
 const saleDetailsItems = document.getElementById('sale-details-items');
+const saleForm = document.querySelector('[data-sale-form]');
+const saleSubmitButton = document.querySelector('[data-sale-submit]');
+
+saleForm.addEventListener('submit', (event) => {
+    if (saleForm.dataset.submitting === '1') {
+        event.preventDefault();
+        return;
+    }
+
+    saleForm.dataset.submitting = '1';
+    saleSubmitButton.disabled = true;
+    saleSubmitButton.textContent = 'Finalizando venda...';
+});
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({

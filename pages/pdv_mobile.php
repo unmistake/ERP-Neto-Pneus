@@ -40,6 +40,7 @@ $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, '
 $pdvFormAction = isset($pdvFormAction) ? (string) $pdvFormAction : 'actions/sale_finalize.php';
 $pdvReturnPage = isset($pdvReturnPage) ? (string) $pdvReturnPage : 'pdv_mobile';
 $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
+$saleRequestToken = bin2hex(random_bytes(32));
 ?>
 
 <div class="max-w-4xl mx-auto">
@@ -48,8 +49,9 @@ $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
         <p class="text-sm text-slate-600">Tela responsiva para vendedores registrarem vendas rapidamente.</p>
     </div>
 
-    <form method="post" action="<?= htmlspecialchars($pdvFormAction) ?>" class="bg-white rounded-xl shadow p-4 md:p-6">
+    <form method="post" action="<?= htmlspecialchars($pdvFormAction) ?>" data-sale-form class="bg-white rounded-xl shadow p-4 md:p-6">
         <input type="hidden" name="return_page" value="<?= htmlspecialchars($pdvReturnPage) ?>">
+        <input type="hidden" name="request_token" value="<?= htmlspecialchars($saleRequestToken) ?>">
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div class="md:col-span-2 relative">
@@ -108,7 +110,7 @@ $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
             <span id="sale_total" class="text-xl font-bold">R$ 0,00</span>
         </div>
 
-        <button class="mt-4 w-full bg-emerald-600 text-white rounded px-4 py-3 font-semibold">Finalizar venda</button>
+        <button data-sale-submit class="mt-4 w-full bg-emerald-600 text-white rounded px-4 py-3 font-semibold disabled:cursor-not-allowed disabled:bg-emerald-400">Finalizar venda</button>
     </form>
 </div>
 
@@ -136,6 +138,19 @@ const addressZipInput = document.getElementById('customer_address_zip');
 const addressCountryInput = document.getElementById('customer_address_country');
 const itemsWrapper = document.getElementById('items');
 const saleTotalEl = document.getElementById('sale_total');
+const saleForm = document.querySelector('[data-sale-form]');
+const saleSubmitButton = document.querySelector('[data-sale-submit]');
+
+saleForm.addEventListener('submit', (event) => {
+    if (saleForm.dataset.submitting === '1') {
+        event.preventDefault();
+        return;
+    }
+
+    saleForm.dataset.submitting = '1';
+    saleSubmitButton.disabled = true;
+    saleSubmitButton.textContent = 'Finalizando venda...';
+});
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
