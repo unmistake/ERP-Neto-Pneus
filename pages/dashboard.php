@@ -3,6 +3,18 @@ $totals = [
     'produtos' => (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn(),
     'estoque' => (int) $pdo->query('SELECT COALESCE(SUM(stock_qty),0) FROM products')->fetchColumn(),
     'vendas' => (float) $pdo->query('SELECT COALESCE(SUM(total_amount),0) FROM sales WHERE DATE(created_at)=CURDATE()')->fetchColumn(),
+    'vendas_semana' => (float) $pdo->query(
+        'SELECT COALESCE(SUM(total_amount),0)
+         FROM sales
+         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+           AND created_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)'
+    )->fetchColumn(),
+    'quantidade_vendas_semana' => (int) $pdo->query(
+        'SELECT COUNT(*)
+         FROM sales
+         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+           AND created_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)'
+    )->fetchColumn(),
     'receber' => (float) $pdo->query("SELECT COALESCE(SUM(amount),0) FROM accounts_receivable WHERE status='pending'")->fetchColumn(),
     'pagar' => (float) $pdo->query("SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE status='pending'")->fetchColumn(),
     'custo_medio' => (float) $pdo->query('SELECT COALESCE(AVG(cost_price),0) FROM products WHERE cost_price > 0')->fetchColumn(),
@@ -53,10 +65,15 @@ for ($i = 29; $i >= 0; $i--) {
 
 <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Produtos</p><p class="text-2xl font-bold"><?= $totals['produtos'] ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Itens em estoque</p><p class="text-2xl font-bold"><?= $totals['estoque'] ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Vendas hoje</p><p class="text-2xl font-bold"><?= money($totals['vendas']) ?></p></div>
+    <div class="rounded-lg bg-white p-4 shadow">
+        <p class="text-sm">Vendas nos ultimos 7 dias</p>
+        <p class="text-2xl font-bold"><?= money($totals['vendas_semana']) ?></p>
+        <p class="mt-1 text-xs text-slate-500"><?= $totals['quantidade_vendas_semana'] ?> venda(s)</p>
+    </div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Custo medio</p><p class="text-2xl font-bold"><?= money($totals['custo_medio']) ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Contas a receber</p><p class="text-2xl font-bold"><?= money($totals['receber']) ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Contas a pagar</p><p class="text-2xl font-bold"><?= money($totals['pagar']) ?></p></div>
