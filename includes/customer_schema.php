@@ -9,8 +9,10 @@ function ensureCustomerAddressSchema(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             first_name VARCHAR(80) NOT NULL,
             last_name VARCHAR(80) NOT NULL,
+            email VARCHAR(160) NULL,
             phone VARCHAR(20) NOT NULL,
             tax_id VARCHAR(18) NOT NULL,
+            password_hash VARCHAR(255) NULL,
             car VARCHAR(120) NULL,
             notes TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -19,6 +21,8 @@ function ensureCustomerAddressSchema(PDO $pdo): void
     );
 
     $columns = [
+        'email' => "ALTER TABLE customers ADD COLUMN email VARCHAR(160) NULL AFTER last_name",
+        'password_hash' => "ALTER TABLE customers ADD COLUMN password_hash VARCHAR(255) NULL AFTER tax_id",
         'address_street' => "ALTER TABLE customers ADD COLUMN address_street VARCHAR(160) NULL AFTER notes",
         'address_number' => "ALTER TABLE customers ADD COLUMN address_number VARCHAR(20) NULL AFTER address_street",
         'address_district' => "ALTER TABLE customers ADD COLUMN address_district VARCHAR(100) NULL AFTER address_number",
@@ -35,4 +39,3 @@ function ensureCustomerAddressSchema(PDO $pdo): void
         }
     }
 }
-

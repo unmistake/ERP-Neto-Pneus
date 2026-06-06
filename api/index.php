@@ -86,8 +86,10 @@ function ensureSchema(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             first_name VARCHAR(80) NOT NULL,
             last_name VARCHAR(80) NOT NULL,
+            email VARCHAR(160) NULL,
             phone VARCHAR(20) NOT NULL,
             tax_id VARCHAR(18) NOT NULL,
+            password_hash VARCHAR(255) NULL,
             car VARCHAR(120) NULL,
             notes TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -328,6 +330,7 @@ function createSale(PDO $pdo, array $body): int
 {
     $customerId = isset($body['customer_id']) ? (int) $body['customer_id'] : 0;
     $customerName = trim((string) ($body['customer_name'] ?? ''));
+    $customerEmail = trim((string) ($body['customer_email'] ?? ''));
     $customerPhone = trim((string) ($body['customer_phone'] ?? ''));
     $customerTaxId = trim((string) ($body['customer_tax_id'] ?? ''));
     $sellerName = trim((string) ($body['seller_name'] ?? ''));
@@ -413,12 +416,17 @@ function createSale(PDO $pdo, array $body): int
                     $lastName = count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : 'API';
                     $taxIdToSave = $customerTaxId !== '' ? $customerTaxId : ('AUTO' . time() . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT));
                     $phoneToSave = $customerPhone !== '' ? $customerPhone : '00 00000-0000';
-                    $createCustomerStmt = $pdo->prepare('INSERT INTO customers (first_name, last_name, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, NULL, ?)');
-                    $createCustomerStmt->execute([$firstName, $lastName, $phoneToSave, $taxIdToSave, 'Criado automaticamente pela API.']);
+                    $createCustomerStmt = $pdo->prepare('INSERT INTO customers (first_name, last_name, email, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, ?, NULL, ?)');
+                    $createCustomerStmt->execute([$firstName, $lastName, $customerEmail ?: null, $phoneToSave, $taxIdToSave, 'Criado automaticamente pela API.']);
                     $customerId = (int) $pdo->lastInsertId();
                     $customerName = trim($firstName . ' ' . $lastName);
                 }
             }
+        }
+
+        if ($customerId !== null && $customerEmail !== '') {
+            $emailUpdateStmt = $pdo->prepare('UPDATE customers SET email = ? WHERE id = ?');
+            $emailUpdateStmt->execute([$customerEmail, $customerId]);
         }
 
         $saleStmt = $pdo->prepare('INSERT INTO sales (customer_id, customer_name, seller_name, total_amount, payment_method, payment_status, fiscal_document_type, fiscal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -590,6 +598,8 @@ if (count($segments) === 0) {
 if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'register' && $method === 'POST' && count($segments) === 2) {
     $firstName = trim((string) ($body['first_name'] ?? ''));
     $lastName = trim((string) ($body['last_name'] ?? ''));
+    $email = trim((string) ($body['email'] ?? ''));
+    $password = (string) ($body['password'] ?? '');
     $phone = trim((string) ($body['phone'] ?? ''));
     $taxId = trim((string) ($body['tax_id'] ?? ''));
     $notes = trim((string) ($body['notes'] ?? ''));
@@ -601,78 +611,145 @@ if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'register' && $
     $addressZip = trim((string) ($body['address_zip'] ?? ''));
     $addressCountry = trim((string) ($body['address_country'] ?? 'Brasil'));
 
-    if ($firstName === '' || $lastName === '' || $phone === '' || $taxId === '') {
-        apiResponse(422, ['ok' => false, 'error' => 'Campos obrigatorios: first_name, last_name, phone, tax_id.']);
+    if ($firstName === '' || $lastName === '' || $email === '' || $phone === '' || $taxId === '' || $password === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Campos obrigatorios: first_name, last_name, email, phone, tax_id, password.']);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        apiResponse(422, ['ok' => false, 'error' => 'E-mail invalido.']);
+    }
+    if (strlen($password) < 6) {
+        apiResponse(422, ['ok' => false, 'error' => 'A senha deve ter pelo menos 6 caracteres.']);
     }
 
+    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+    $customer = null;
+
     try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO customers
-                (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
-             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)'
+        $findExistingStmt = $pdo->prepare(
+            "SELECT id, first_name, last_name, email, phone, tax_id, password_hash, car, created_at
+             FROM customers
+             WHERE REPLACE(REPLACE(REPLACE(REPLACE(tax_id, '.', ''), '-', ''), '/', ''), ' ', '') = ?
+             LIMIT 1"
         );
-        $stmt->execute([
-            $firstName,
-            $lastName,
-            $phone,
-            $taxId,
-            $notes ?: 'Criado pela loja online.',
-            $addressStreet ?: null,
-            $addressNumber ?: null,
-            $addressDistrict ?: null,
-            $addressCity ?: null,
-            $addressState ?: null,
-            $addressZip ?: null,
-            $addressCountry ?: 'Brasil',
-        ]);
+        $findExistingStmt->execute([apiDigitsOnly($taxId)]);
+        $existingCustomer = $findExistingStmt->fetch();
+
+        if ($existingCustomer) {
+            if (!empty($existingCustomer['password_hash'])) {
+                apiResponse(409, ['ok' => false, 'error' => 'Este CPF/CNPJ ja possui uma conta. Use o login.']);
+            }
+            if (!apiPhoneMatches((string) $existingCustomer['phone'], $phone)) {
+                apiResponse(409, ['ok' => false, 'error' => 'CPF/CNPJ ja cadastrado no CRM com telefone diferente. Fale com a equipe para liberar o acesso.']);
+            }
+
+            $updateStmt = $pdo->prepare(
+                'UPDATE customers
+                 SET first_name = ?, last_name = ?, email = ?, phone = ?, password_hash = ?,
+                     address_street = ?, address_number = ?, address_district = ?, address_city = ?,
+                     address_state = ?, address_zip = ?, address_country = ?
+                 WHERE id = ?'
+            );
+            $updateStmt->execute([
+                $firstName,
+                $lastName,
+                $email,
+                $phone,
+                $passwordHash,
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+                (int) $existingCustomer['id'],
+            ]);
+
+            $customer = [
+                'id' => (int) $existingCustomer['id'],
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $email,
+                'phone' => $phone,
+                'tax_id' => $taxId,
+                'car' => $existingCustomer['car'] ?? null,
+                'created_at' => $existingCustomer['created_at'] ?? date('Y-m-d H:i:s'),
+            ];
+        } else {
+            $stmt = $pdo->prepare(
+                'INSERT INTO customers
+                    (first_name, last_name, email, phone, tax_id, password_hash, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $firstName,
+                $lastName,
+                $email,
+                $phone,
+                $taxId,
+                $passwordHash,
+                $notes ?: 'Criado pela loja online.',
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+            ]);
+
+            $customer = [
+                'id' => (int) $pdo->lastInsertId(),
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $email,
+                'phone' => $phone,
+                'tax_id' => $taxId,
+                'car' => null,
+                'created_at' => date('Y-m-d H:i:s'),
+            ];
+        }
     } catch (Throwable $e) {
         apiResponse(409, ['ok' => false, 'error' => 'Nao foi possivel criar cliente. CPF/CNPJ pode ja estar cadastrado.']);
     }
-
-    $customer = [
-        'id' => (int) $pdo->lastInsertId(),
-        'first_name' => $firstName,
-        'last_name' => $lastName,
-        'phone' => $phone,
-        'tax_id' => $taxId,
-        'car' => null,
-        'created_at' => date('Y-m-d H:i:s'),
-    ];
 
     apiResponse(201, [
         'ok' => true,
         'data' => [
             'id' => (int) $customer['id'],
-            'first_name' => $firstName,
-            'last_name' => $lastName,
+            'first_name' => $customer['first_name'],
+            'last_name' => $customer['last_name'],
+            'email' => $customer['email'],
             'full_name' => customerFullName($customer),
-            'phone_masked' => apiMaskPhone($phone),
-            'tax_id_masked' => apiMaskTaxId($taxId),
-            'car' => null,
+            'phone_masked' => apiMaskPhone((string) $customer['phone']),
+            'tax_id_masked' => apiMaskTaxId((string) $customer['tax_id']),
+            'car' => $customer['car'],
             'created_at' => $customer['created_at'],
         ],
     ]);
 }
 
 if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'login' && $method === 'POST' && count($segments) === 2) {
-    $taxId = apiDigitsOnly((string) ($body['tax_id'] ?? ''));
-    $phone = apiDigitsOnly((string) ($body['phone'] ?? ''));
+    $identifier = trim((string) ($body['identifier'] ?? ''));
+    $password = (string) ($body['password'] ?? '');
+    $taxId = apiDigitsOnly($identifier);
 
-    if ($taxId === '' || $phone === '') {
-        apiResponse(422, ['ok' => false, 'error' => 'Informe CPF/CNPJ e telefone.']);
+    if ($identifier === '' || $password === '') {
+        apiResponse(422, ['ok' => false, 'error' => 'Informe e-mail/CPF e senha.']);
     }
 
     $stmt = $pdo->prepare(
-        "SELECT id, first_name, last_name, phone, tax_id, car, created_at
+        "SELECT id, first_name, last_name, email, phone, tax_id, password_hash, car, created_at
          FROM customers
-         WHERE REPLACE(REPLACE(REPLACE(REPLACE(tax_id, '.', ''), '-', ''), '/', ''), ' ', '') = ?
+         WHERE LOWER(email) = LOWER(?)
+            OR REPLACE(REPLACE(REPLACE(REPLACE(tax_id, '.', ''), '-', ''), '/', ''), ' ', '') = ?
          LIMIT 1"
     );
-    $stmt->execute([$taxId]);
+    $stmt->execute([$identifier, $taxId]);
     $customer = $stmt->fetch();
 
-    if (!$customer || !apiPhoneMatches((string) $customer['phone'], $phone)) {
-        apiResponse(401, ['ok' => false, 'error' => 'Cliente nao encontrado para os dados informados.']);
+    if (!$customer || empty($customer['password_hash']) || !password_verify($password, (string) $customer['password_hash'])) {
+        apiResponse(401, ['ok' => false, 'error' => 'E-mail/CPF ou senha invalidos.']);
     }
 
     apiResponse(200, [
@@ -681,6 +758,7 @@ if ($segments[0] === 'customer-auth' && ($segments[1] ?? '') === 'login' && $met
             'id' => (int) $customer['id'],
             'first_name' => $customer['first_name'],
             'last_name' => $customer['last_name'],
+            'email' => $customer['email'],
             'full_name' => customerFullName($customer),
             'phone_masked' => apiMaskPhone((string) $customer['phone']),
             'tax_id_masked' => apiMaskTaxId((string) $customer['tax_id']),
@@ -957,9 +1035,9 @@ if ($segments[0] === 'customers' && $method === 'GET' && count($segments) === 1)
     $where = [];
     $params = [];
     if ($q !== '') {
-        $where[] = '(first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name, " ", last_name) LIKE ? OR phone LIKE ? OR tax_id LIKE ?)';
+        $where[] = '(first_name LIKE ? OR last_name LIKE ? OR CONCAT(first_name, " ", last_name) LIKE ? OR email LIKE ? OR phone LIKE ? OR tax_id LIKE ?)';
         $like = '%' . $q . '%';
-        $params = array_merge($params, [$like, $like, $like, $like, $like]);
+        $params = array_merge($params, [$like, $like, $like, $like, $like, $like]);
     }
     if ($taxId !== '') {
         $where[] = 'tax_id LIKE ?';
@@ -975,7 +1053,7 @@ if ($segments[0] === 'customers' && $method === 'GET' && count($segments) === 1)
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, first_name, last_name, phone, tax_id, car, notes, created_at
+    $sql = "SELECT id, first_name, last_name, email, phone, tax_id, car, notes, created_at
             FROM customers
             $whereSql
             ORDER BY id DESC
@@ -993,6 +1071,7 @@ if ($segments[0] === 'customers' && $method === 'GET' && count($segments) === 1)
 if ($segments[0] === 'customers' && $method === 'POST' && count($segments) === 1) {
     $firstName = trim((string) ($body['first_name'] ?? ''));
     $lastName = trim((string) ($body['last_name'] ?? ''));
+    $email = trim((string) ($body['email'] ?? ''));
     $phone = trim((string) ($body['phone'] ?? ''));
     $taxId = trim((string) ($body['tax_id'] ?? ''));
     $car = trim((string) ($body['car'] ?? ''));
@@ -1003,8 +1082,8 @@ if ($segments[0] === 'customers' && $method === 'POST' && count($segments) === 1
     }
 
     try {
-        $stmt = $pdo->prepare('INSERT INTO customers (first_name, last_name, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, ?, ?)');
-        $stmt->execute([$firstName, $lastName, $phone, $taxId, $car ?: null, $notes ?: null]);
+        $stmt = $pdo->prepare('INSERT INTO customers (first_name, last_name, email, phone, tax_id, car, notes) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $stmt->execute([$firstName, $lastName, $email ?: null, $phone, $taxId, $car ?: null, $notes ?: null]);
     } catch (Throwable $e) {
         apiResponse(409, ['ok' => false, 'error' => 'Nao foi possivel criar cliente. CPF/CNPJ pode ja existir.']);
     }
@@ -1017,7 +1096,7 @@ if ($segments[0] === 'customers' && $method === 'GET' && count($segments) === 2)
     if ($id <= 0) {
         apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
     }
-    $stmt = $pdo->prepare('SELECT id, first_name, last_name, phone, tax_id, car, notes, created_at FROM customers WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, first_name, last_name, email, phone, tax_id, car, notes, created_at FROM customers WHERE id = ?');
     $stmt->execute([$id]);
     $customer = $stmt->fetch();
     if (!$customer) {

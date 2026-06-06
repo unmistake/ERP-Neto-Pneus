@@ -14,8 +14,10 @@ function saleEnsureCustomerSchema(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             first_name VARCHAR(80) NOT NULL,
             last_name VARCHAR(80) NOT NULL,
+            email VARCHAR(160) NULL,
             phone VARCHAR(20) NOT NULL,
             tax_id VARCHAR(18) NOT NULL,
+            password_hash VARCHAR(255) NULL,
             car VARCHAR(120) NULL,
             notes TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +41,7 @@ $customerFirstName = trim($_POST['customer_first_name'] ?? '');
 $customerLastName = trim($_POST['customer_last_name'] ?? '');
 $customerName = trim($customerFirstName . ' ' . $customerLastName);
 $customerId = (int) ($_POST['customer_id'] ?? 0);
+$customerEmail = trim($_POST['customer_email'] ?? '');
 $customerPhone = trim($_POST['customer_phone'] ?? '');
 $customerTaxId = trim($_POST['customer_tax_id'] ?? '');
 $customerCar = trim($_POST['customer_car'] ?? '');
@@ -178,12 +181,13 @@ try {
                 $phoneToSave = $customerPhone !== '' ? $customerPhone : '00 00000-0000';
                 $createCustomerStmt = $pdo->prepare(
                     'INSERT INTO customers
-                        (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        (first_name, last_name, email, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $createCustomerStmt->execute([
                     $firstName,
                     $lastName,
+                    $customerEmail !== '' ? $customerEmail : null,
                     $phoneToSave,
                     $taxIdToSave,
                     $customerCar !== '' ? $customerCar : null,
@@ -201,6 +205,11 @@ try {
                 $customerName = trim($firstName . ' ' . $lastName);
             }
         }
+    }
+
+    if ($customerId !== null && $customerEmail !== '') {
+        $emailUpdateStmt = $pdo->prepare('UPDATE customers SET email = ? WHERE id = ?');
+        $emailUpdateStmt->execute([$customerEmail, $customerId]);
     }
 
     if ($customerId !== null && (

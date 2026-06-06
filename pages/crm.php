@@ -11,8 +11,10 @@ function crmEnsureSchema(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             first_name VARCHAR(80) NOT NULL,
             last_name VARCHAR(80) NOT NULL,
+            email VARCHAR(160) NULL,
             phone VARCHAR(20) NOT NULL,
             tax_id VARCHAR(18) NOT NULL,
+            password_hash VARCHAR(255) NULL,
             car VARCHAR(120) NULL,
             notes TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -69,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $customerId = (int) ($_POST['customer_id'] ?? 0);
     $firstName = trim($_POST['first_name'] ?? '');
     $lastName = trim($_POST['last_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     $taxId = trim($_POST['tax_id'] ?? '');
     $car = trim($_POST['car'] ?? '');
@@ -90,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($customerId > 0) {
             $stmt = $pdo->prepare(
                 'UPDATE customers
-                 SET first_name = ?, last_name = ?, phone = ?, tax_id = ?, car = ?, notes = ?,
+                 SET first_name = ?, last_name = ?, email = ?, phone = ?, tax_id = ?, car = ?, notes = ?,
                      address_street = ?, address_number = ?, address_district = ?, address_city = ?,
                      address_state = ?, address_zip = ?, address_country = ?
                  WHERE id = ?'
@@ -98,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 $firstName,
                 $lastName,
+                $email ?: null,
                 $phone,
                 $taxId,
                 $car ?: null,
@@ -115,12 +119,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $stmt = $pdo->prepare(
                 'INSERT INTO customers
-                    (first_name, last_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    (first_name, last_name, email, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $stmt->execute([
                 $firstName,
                 $lastName,
+                $email ?: null,
                 $phone,
                 $taxId,
                 $car ?: null,
@@ -209,6 +214,7 @@ if ($selectedCustomerId > 0) {
             <input required name="first_name" placeholder="Nome" value="<?= htmlspecialchars((string) ($editingCustomer['first_name'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
             <input required name="last_name" placeholder="Sobrenome" value="<?= htmlspecialchars((string) ($editingCustomer['last_name'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         </div>
+        <input type="email" name="email" placeholder="E-mail" value="<?= htmlspecialchars((string) ($editingCustomer['email'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         <input required name="phone" id="phone" placeholder="Telefone (xx xxxxx-xxxx)" value="<?= htmlspecialchars((string) ($editingCustomer['phone'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         <input required name="tax_id" id="tax_id" placeholder="CPF/CNPJ" value="<?= htmlspecialchars((string) ($editingCustomer['tax_id'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
         <input name="car" placeholder="Carro" value="<?= htmlspecialchars((string) ($editingCustomer['car'] ?? '')) ?>" class="w-full border rounded px-3 py-2">
@@ -235,6 +241,7 @@ if ($selectedCustomerId > 0) {
             <tr>
                 <th class="p-3 text-left">Cliente</th>
                 <th class="p-3 text-left">Tipo</th>
+                <th class="p-3 text-left">E-mail</th>
                 <th class="p-3 text-left">Telefone</th>
                 <th class="p-3 text-left">CPF/CNPJ</th>
                 <th class="p-3 text-left">Compras</th>
@@ -253,6 +260,7 @@ if ($selectedCustomerId > 0) {
                             <span class="inline-block px-2 py-1 rounded bg-amber-100 text-amber-800 text-xs font-semibold">Lead</span>
                         <?php endif; ?>
                     </td>
+                    <td class="p-3"><?= htmlspecialchars((string) ($customer['email'] ?? '')) ?: '-' ?></td>
                     <td class="p-3"><?= htmlspecialchars($customer['phone']) ?></td>
                     <td class="p-3"><?= htmlspecialchars($customer['tax_id']) ?></td>
                     <td class="p-3"><?= (int) $customer['total_sales'] ?> (<?= money((float) $customer['total_spent']) ?>)</td>

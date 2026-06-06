@@ -10,8 +10,10 @@ function pdvMobileEnsureCustomerSchema(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             first_name VARCHAR(80) NOT NULL,
             last_name VARCHAR(80) NOT NULL,
+            email VARCHAR(160) NULL,
             phone VARCHAR(20) NOT NULL,
             tax_id VARCHAR(18) NOT NULL,
+            password_hash VARCHAR(255) NULL,
             car VARCHAR(120) NULL,
             notes TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -34,7 +36,7 @@ function pdvMobileEnsureCustomerSchema(PDO $pdo): void
 pdvMobileEnsureCustomerSchema($pdo);
 
 $products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
-$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
+$customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, email, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
 $pdvFormAction = isset($pdvFormAction) ? (string) $pdvFormAction : 'actions/sale_finalize.php';
 $pdvReturnPage = isset($pdvReturnPage) ? (string) $pdvReturnPage : 'pdv_mobile';
 $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
@@ -57,6 +59,7 @@ $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
             </div>
             <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="border rounded px-3 py-3">
             <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="border rounded px-3 py-3">
+            <input type="email" name="customer_email" id="customer_email" placeholder="E-mail" class="border rounded px-3 py-3 md:col-span-2">
             <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="border rounded px-3 py-3">
             <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-3">
             <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-3">
@@ -117,6 +120,7 @@ const customerSearchInput = document.getElementById('customer_search');
 const customerSuggestions = document.getElementById('customer_suggestions');
 const firstNameInput = document.getElementById('customer_first_name');
 const lastNameInput = document.getElementById('customer_last_name');
+const emailInput = document.getElementById('customer_email');
 const phoneInput = document.getElementById('customer_phone');
 const taxIdInput = document.getElementById('customer_tax_id');
 const carInput = document.getElementById('customer_car');
@@ -282,6 +286,7 @@ function selectCustomer(customer) {
     customerSearchInput.value = customer.full_name;
     firstNameInput.value = customer.first_name || '';
     lastNameInput.value = customer.last_name || '';
+    emailInput.value = customer.email || '';
     phoneInput.value = customer.phone || '';
     taxIdInput.value = customer.tax_id || '';
     carInput.value = customer.car || '';
@@ -313,6 +318,7 @@ function renderCustomerSuggestions(query) {
 
     const filtered = customers.filter((c) =>
         c.full_name.toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
         (c.phone || '').toLowerCase().includes(q) ||
         (c.tax_id || '').toLowerCase().includes(q)
     ).slice(0, 8);
@@ -326,7 +332,7 @@ function renderCustomerSuggestions(query) {
     customerSuggestions.innerHTML = filtered.map((c) => `
         <button type="button" data-id="${c.id}" class="w-full text-left px-3 py-2 hover:bg-slate-100 border-b last:border-b-0">
             <div class="font-medium">${c.full_name}</div>
-            <div class="text-xs text-slate-500">${c.phone || '-'} | ${c.tax_id || '-'}</div>
+            <div class="text-xs text-slate-500">${c.email || '-'} | ${c.phone || '-'} | ${c.tax_id || '-'}</div>
         </button>
     `).join('');
 
