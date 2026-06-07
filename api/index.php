@@ -578,6 +578,7 @@ if (count($segments) === 0) {
             '/customers',
             '/customer-auth/login',
             '/customer-auth/register',
+            '/store-customers/sync',
             '/customers/{id}',
             '/sales',
             '/sales/{id}',
@@ -591,6 +592,140 @@ if (count($segments) === 0) {
             '/bank-transactions',
             '/bank-transactions/{id}',
             '/bank-transactions/summary',
+        ],
+    ]);
+}
+
+if ($segments[0] === 'store-customers' && ($segments[1] ?? '') === 'sync' && $method === 'POST' && count($segments) === 2) {
+    $externalAuthId = strtolower(trim((string) ($body['external_auth_id'] ?? '')));
+    $firstName = trim((string) ($body['first_name'] ?? ''));
+    $lastName = trim((string) ($body['last_name'] ?? ''));
+    $email = strtolower(trim((string) ($body['email'] ?? '')));
+    $phone = trim((string) ($body['phone'] ?? ''));
+    $taxId = trim((string) ($body['tax_id'] ?? ''));
+    $addressStreet = trim((string) ($body['address_street'] ?? ''));
+    $addressNumber = trim((string) ($body['address_number'] ?? ''));
+    $addressDistrict = trim((string) ($body['address_district'] ?? ''));
+    $addressCity = trim((string) ($body['address_city'] ?? ''));
+    $addressState = strtoupper(substr(trim((string) ($body['address_state'] ?? '')), 0, 2));
+    $addressZip = trim((string) ($body['address_zip'] ?? ''));
+    $addressCountry = trim((string) ($body['address_country'] ?? 'Brasil'));
+
+    if (
+        !preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/', $externalAuthId)
+        || $firstName === ''
+        || $lastName === ''
+        || $email === ''
+        || $phone === ''
+        || $taxId === ''
+    ) {
+        apiResponse(422, ['ok' => false, 'error' => 'Dados obrigatorios invalidos para sincronizar o cliente da loja.']);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        apiResponse(422, ['ok' => false, 'error' => 'E-mail invalido.']);
+    }
+
+    $taxIdDigits = apiDigitsOnly($taxId);
+    if (!in_array(strlen($taxIdDigits), [11, 14], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'CPF/CNPJ invalido.']);
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $findStmt = $pdo->prepare(
+            "SELECT id, external_auth_id, phone, car, created_at
+             FROM customers
+             WHERE external_auth_id = ?
+                OR REPLACE(REPLACE(REPLACE(REPLACE(tax_id, '.', ''), '-', ''), '/', ''), ' ', '') = ?
+             ORDER BY external_auth_id = ? DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $findStmt->execute([$externalAuthId, $taxIdDigits, $externalAuthId]);
+        $customer = $findStmt->fetch();
+
+        if ($customer && !empty($customer['external_auth_id']) && $customer['external_auth_id'] !== $externalAuthId) {
+            throw new RuntimeException('Este CPF/CNPJ ja esta vinculado a outra conta da loja.');
+        }
+        if ($customer && !apiPhoneMatches((string) $customer['phone'], $phone)) {
+            throw new RuntimeException('CPF/CNPJ ja cadastrado no CRM com telefone diferente. Fale com a equipe para liberar o acesso.');
+        }
+
+        if ($customer) {
+            $customerId = (int) $customer['id'];
+            $updateStmt = $pdo->prepare(
+                'UPDATE customers
+                 SET external_auth_id = ?, password_hash = NULL, first_name = ?, last_name = ?, email = ?, phone = ?,
+                     address_street = ?, address_number = ?, address_district = ?, address_city = ?,
+                     address_state = ?, address_zip = ?, address_country = ?
+                 WHERE id = ?'
+            );
+            $updateStmt->execute([
+                $externalAuthId,
+                $firstName,
+                $lastName,
+                $email,
+                $phone,
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+                $customerId,
+            ]);
+            $createdAt = $customer['created_at'] ?? date('Y-m-d H:i:s');
+            $car = $customer['car'] ?? null;
+        } else {
+            $insertStmt = $pdo->prepare(
+                'INSERT INTO customers
+                    (external_auth_id, first_name, last_name, email, phone, tax_id, car, notes,
+                     address_street, address_number, address_district, address_city, address_state, address_zip, address_country)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $insertStmt->execute([
+                $externalAuthId,
+                $firstName,
+                $lastName,
+                $email,
+                $phone,
+                $taxId,
+                'Criado pela loja online com autenticacao Supabase.',
+                $addressStreet ?: null,
+                $addressNumber ?: null,
+                $addressDistrict ?: null,
+                $addressCity ?: null,
+                $addressState ?: null,
+                $addressZip ?: null,
+                $addressCountry ?: 'Brasil',
+            ]);
+            $customerId = (int) $pdo->lastInsertId();
+            $createdAt = date('Y-m-d H:i:s');
+            $car = null;
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        apiResponse(409, ['ok' => false, 'error' => $e->getMessage()]);
+    }
+
+    apiResponse(200, [
+        'ok' => true,
+        'data' => [
+            'id' => $customerId,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $email,
+            'full_name' => trim($firstName . ' ' . $lastName),
+            'phone_masked' => apiMaskPhone($phone),
+            'tax_id_masked' => apiMaskTaxId($taxId),
+            'car' => $car,
+            'created_at' => $createdAt,
         ],
     ]);
 }

@@ -23,6 +23,7 @@ function ensureCustomerAddressSchema(PDO $pdo): void
     $columns = [
         'email' => "ALTER TABLE customers ADD COLUMN email VARCHAR(160) NULL AFTER last_name",
         'password_hash' => "ALTER TABLE customers ADD COLUMN password_hash VARCHAR(255) NULL AFTER tax_id",
+        'external_auth_id' => "ALTER TABLE customers ADD COLUMN external_auth_id CHAR(36) NULL AFTER password_hash",
         'address_street' => "ALTER TABLE customers ADD COLUMN address_street VARCHAR(160) NULL AFTER notes",
         'address_number' => "ALTER TABLE customers ADD COLUMN address_number VARCHAR(20) NULL AFTER address_street",
         'address_district' => "ALTER TABLE customers ADD COLUMN address_district VARCHAR(100) NULL AFTER address_number",
@@ -37,5 +38,10 @@ function ensureCustomerAddressSchema(PDO $pdo): void
         if (!$exists) {
             $pdo->exec($sql);
         }
+    }
+
+    $hasExternalAuthIndex = (bool) $pdo->query("SHOW INDEX FROM customers WHERE Key_name = 'uk_customers_external_auth_id'")->fetch();
+    if (!$hasExternalAuthIndex) {
+        $pdo->exec('ALTER TABLE customers ADD UNIQUE KEY uk_customers_external_auth_id (external_auth_id)');
     }
 }

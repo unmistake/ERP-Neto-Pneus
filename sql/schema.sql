@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS customers (
     last_name VARCHAR(80) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     tax_id VARCHAR(18) NOT NULL,
+    password_hash VARCHAR(255) NULL,
+    external_auth_id CHAR(36) NULL,
     car VARCHAR(120) NULL,
     notes TEXT NULL,
     address_street VARCHAR(160) NULL,
@@ -61,7 +63,8 @@ CREATE TABLE IF NOT EXISTS customers (
     address_zip VARCHAR(10) NULL,
     address_country VARCHAR(60) NULL DEFAULT 'Brasil',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_customers_tax_id (tax_id)
+    UNIQUE KEY uk_customers_tax_id (tax_id),
+    UNIQUE KEY uk_customers_external_auth_id (external_auth_id)
 );
 
 CREATE TABLE IF NOT EXISTS sales (
