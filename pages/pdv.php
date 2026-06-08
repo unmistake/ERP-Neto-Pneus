@@ -140,7 +140,7 @@ if (count($todaySales) > 0) {
         </div>
         <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="border rounded px-3 py-2">
         <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="border rounded px-3 py-2">
-        <input type="email" name="customer_email" id="customer_email" placeholder="E-mail" class="border rounded px-3 py-2">
+        <input type="text" inputmode="email" name="customer_email" id="customer_email" placeholder="E-mail (opcional)" class="border rounded px-3 py-2">
         <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="border rounded px-3 py-2">
         <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-2">
         <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-2">
