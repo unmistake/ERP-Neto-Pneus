@@ -4,6 +4,11 @@ USE `ERP`;
 CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(120) NOT NULL,
+    sku VARCHAR(50) NULL,
+    description TEXT NULL,
+    gtin VARCHAR(14) NULL,
+    mpn VARCHAR(70) NULL,
+    google_category VARCHAR(160) NULL,
     category ENUM('pneu','roda') NOT NULL DEFAULT 'pneu',
     item_condition ENUM('novo','usado') NOT NULL DEFAULT 'novo',
     used_tire_condition ENUM('seminovo','meia_vida','abaixo_50_twi','seminovo_com_reparo') NULL,

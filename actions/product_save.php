@@ -9,6 +9,11 @@ require_once __DIR__ . '/../includes/product_schema.php';
 ensureProductExtendedSchema($pdo);
 
 $name = trim($_POST['name'] ?? '');
+$sku = trim($_POST['sku'] ?? '');
+$description = trim($_POST['description'] ?? '');
+$gtin = preg_replace('/\D+/', '', (string) ($_POST['gtin'] ?? '')) ?? '';
+$mpn = trim($_POST['mpn'] ?? '');
+$googleCategory = trim($_POST['google_category'] ?? '');
 $category = trim($_POST['category'] ?? 'pneu');
 $itemCondition = trim($_POST['item_condition'] ?? 'novo');
 $usedTireCondition = trim($_POST['used_tire_condition'] ?? '');
@@ -51,13 +56,23 @@ if ($name === '' || $costPrice < 0 || $salePrice < 0 || $stockQty < 0) {
     redirect('../index.php?page=estoque');
 }
 
+if ($gtin !== '' && !in_array(strlen($gtin), [8, 12, 13, 14], true)) {
+    flash('error', 'GTIN/EAN deve ter 8, 12, 13 ou 14 digitos.');
+    redirect('../index.php?page=estoque');
+}
+
 try {
     $imagePath = productImageUpload('image');
 
     $pdo->beginTransaction();
-    $stmt = $pdo->prepare('INSERT INTO products (name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT INTO products (name, sku, description, gtin, mpn, google_category, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $stmt->execute([
         $name,
+        $sku ?: null,
+        $description ?: null,
+        $gtin ?: null,
+        $mpn ?: null,
+        $googleCategory ?: null,
         $category,
         $itemCondition,
         ($category === 'pneu' && $itemCondition === 'usado') ? $usedTireCondition : null,

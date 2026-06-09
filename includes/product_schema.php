@@ -4,6 +4,21 @@ declare(strict_types=1);
 
 function ensureProductExtendedSchema(PDO $pdo): void
 {
+    $columns = [
+        'sku' => "ALTER TABLE products ADD COLUMN sku VARCHAR(50) NULL AFTER name",
+        'description' => "ALTER TABLE products ADD COLUMN description TEXT NULL AFTER sku",
+        'gtin' => "ALTER TABLE products ADD COLUMN gtin VARCHAR(14) NULL AFTER description",
+        'mpn' => "ALTER TABLE products ADD COLUMN mpn VARCHAR(70) NULL AFTER gtin",
+        'google_category' => "ALTER TABLE products ADD COLUMN google_category VARCHAR(160) NULL AFTER mpn",
+    ];
+
+    foreach ($columns as $column => $sql) {
+        $exists = (bool) $pdo->query("SHOW COLUMNS FROM products LIKE " . $pdo->quote($column))->fetch();
+        if (!$exists) {
+            $pdo->exec($sql);
+        }
+    }
+
     $hasImagePath = (bool) $pdo->query("SHOW COLUMNS FROM products LIKE 'image_path'")->fetch();
     if (!$hasImagePath) {
         $pdo->exec("ALTER TABLE products ADD COLUMN image_path VARCHAR(255) NULL AFTER location");

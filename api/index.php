@@ -32,6 +32,11 @@ function ensureSchema(PDO $pdo): void
         "CREATE TABLE IF NOT EXISTS products (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(120) NOT NULL,
+            sku VARCHAR(50) NULL,
+            description TEXT NULL,
+            gtin VARCHAR(14) NULL,
+            mpn VARCHAR(70) NULL,
+            google_category VARCHAR(160) NULL,
             category ENUM('pneu','roda') NOT NULL DEFAULT 'pneu',
             item_condition ENUM('novo','usado') NOT NULL DEFAULT 'novo',
             used_tire_condition ENUM('seminovo','meia_vida','abaixo_50_twi','seminovo_com_reparo') NULL,
@@ -484,7 +489,50 @@ if (count($segments) === 0 && isset($_GET['resource'])) {
     }
 }
 
+function formatPublicProduct(array $row, array $cars = []): array
+{
+    $row['id'] = (int) $row['id'];
+    $row['price'] = (float) $row['price'];
+    $row['stock_qty'] = (int) $row['stock_qty'];
+    $row['available'] = $row['stock_qty'] > 0;
+    $row['image_url'] = apiPublicImageUrl($row['image_path'] ?? null);
+    $row['cars'] = $cars;
+    unset($row['image_path']);
+
+    return $row;
+}
+
 ensureSchema($pdo);
+
+if (($segments[0] ?? '') === 'public' && ($segments[1] ?? '') === 'products' && $method === 'GET' && count($segments) === 3) {
+    $productId = (int) $segments[2];
+    if ($productId <= 0) {
+        apiResponse(422, ['ok' => false, 'error' => 'ID de produto invalido.']);
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT p.id, p.name, p.sku, p.description, p.gtin, p.mpn, p.google_category,
+                p.category, p.item_condition, p.used_tire_condition,
+                p.brand, p.model, p.width, p.profile, p.rim, p.location,
+                p.image_path, p.sale_price AS price, p.stock_qty
+         FROM products p
+         WHERE p.id = ?
+           AND p.image_path IS NOT NULL
+           AND TRIM(p.image_path) <> ''
+         LIMIT 1"
+    );
+    $stmt->execute([$productId]);
+    $product = $stmt->fetch();
+    if (!$product) {
+        apiResponse(404, ['ok' => false, 'error' => 'Produto nao encontrado.']);
+    }
+
+    $carMap = productCarsMap($pdo, [$productId]);
+    apiResponse(200, [
+        'ok' => true,
+        'data' => formatPublicProduct($product, $carMap[$productId] ?? []),
+    ]);
+}
 
 if (($segments[0] ?? '') === 'public' && ($segments[1] ?? '') === 'products' && $method === 'GET') {
     [$page, $limit, $offset] = getPaginationParams(24, 100);
@@ -529,7 +577,8 @@ if (($segments[0] ?? '') === 'public' && ($segments[1] ?? '') === 'products' && 
     $total = (int) $countStmt->fetchColumn();
 
     $stmt = $pdo->prepare(
-        "SELECT p.id, p.name, p.category, p.item_condition, p.used_tire_condition,
+        "SELECT p.id, p.name, p.sku, p.description, p.gtin, p.mpn, p.google_category,
+                p.category, p.item_condition, p.used_tire_condition,
                 p.brand, p.model, p.width, p.profile, p.rim, p.location,
                 p.image_path, p.sale_price AS price, p.stock_qty
          FROM products p
@@ -542,12 +591,7 @@ if (($segments[0] ?? '') === 'public' && ($segments[1] ?? '') === 'products' && 
     $carMap = productCarsMap($pdo, array_column($rows, 'id'));
 
     foreach ($rows as &$row) {
-        $row['price'] = (float) $row['price'];
-        $row['stock_qty'] = (int) $row['stock_qty'];
-        $row['available'] = ((int) $row['stock_qty']) > 0;
-        $row['image_url'] = apiPublicImageUrl($row['image_path'] ?? null);
-        unset($row['image_path']);
-        $row['cars'] = $carMap[(int) $row['id']] ?? [];
+        $row = formatPublicProduct($row, $carMap[(int) $row['id']] ?? []);
     }
     unset($row);
 
@@ -947,7 +991,8 @@ if ($segments[0] === 'products' && $method === 'GET' && count($segments) === 1) 
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
 
-    $sql = "SELECT id, name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price AS price, stock_qty, created_at
+    $sql = "SELECT id, name, sku, description, gtin, mpn, google_category,
+                   category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price AS price, stock_qty, created_at
             FROM products
             $whereSql
             ORDER BY id DESC
@@ -965,6 +1010,11 @@ if ($segments[0] === 'products' && $method === 'GET' && count($segments) === 1) 
 
 if ($segments[0] === 'products' && $method === 'POST' && count($segments) === 1) {
     $name = trim((string) ($body['name'] ?? ''));
+    $sku = trim((string) ($body['sku'] ?? ''));
+    $description = trim((string) ($body['description'] ?? ''));
+    $gtin = preg_replace('/\D+/', '', (string) ($body['gtin'] ?? '')) ?? '';
+    $mpn = trim((string) ($body['mpn'] ?? ''));
+    $googleCategory = trim((string) ($body['google_category'] ?? ''));
     $category = trim((string) ($body['category'] ?? 'pneu'));
     $itemCondition = trim((string) ($body['item_condition'] ?? 'novo'));
     $usedTireCondition = trim((string) ($body['used_tire_condition'] ?? ''));
@@ -999,10 +1049,13 @@ if ($segments[0] === 'products' && $method === 'POST' && count($segments) === 1)
     if ($name === '' || $costPrice < 0 || $salePrice < 0 || $stockQty < 0) {
         apiResponse(422, ['ok' => false, 'error' => 'Campos invalidos para produto.']);
     }
+    if ($gtin !== '' && !in_array(strlen($gtin), [8, 12, 13, 14], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'GTIN deve ter 8, 12, 13 ou 14 digitos.']);
+    }
 
     $pdo->beginTransaction();
-    $stmt = $pdo->prepare('INSERT INTO products (name, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    $stmt->execute([$name, $category, $itemCondition, ($category === 'pneu' && $itemCondition === 'usado') ? $usedTireCondition : null, $brand ?: null, $model ?: null, $width ?: null, $profile ?: null, $rim ?: null, $location ?: null, $imagePath ?: null, $costPrice, $salePrice, $stockQty]);
+    $stmt = $pdo->prepare('INSERT INTO products (name, sku, description, gtin, mpn, google_category, category, item_condition, used_tire_condition, brand, model, width, profile, rim, location, image_path, cost_price, sale_price, stock_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$name, $sku ?: null, $description ?: null, $gtin ?: null, $mpn ?: null, $googleCategory ?: null, $category, $itemCondition, ($category === 'pneu' && $itemCondition === 'usado') ? $usedTireCondition : null, $brand ?: null, $model ?: null, $width ?: null, $profile ?: null, $rim ?: null, $location ?: null, $imagePath ?: null, $costPrice, $salePrice, $stockQty]);
     $productId = (int) $pdo->lastInsertId();
     syncProductCars($pdo, $productId, $cars);
 
@@ -1081,7 +1134,7 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
         apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
     }
 
-    $stmt = $pdo->prepare('SELECT id, name, brand, model, image_path, cost_price, sale_price, stock_qty FROM products WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, name, sku, description, gtin, mpn, google_category, brand, model, image_path, cost_price, sale_price, stock_qty FROM products WHERE id = ?');
     $stmt->execute([$id]);
     $current = $stmt->fetch();
     if (!$current) {
@@ -1089,6 +1142,13 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
     }
 
     $name = array_key_exists('name', $body) ? trim((string) $body['name']) : (string) $current['name'];
+    $sku = array_key_exists('sku', $body) ? trim((string) $body['sku']) : (string) ($current['sku'] ?? '');
+    $description = array_key_exists('description', $body) ? trim((string) $body['description']) : (string) ($current['description'] ?? '');
+    $gtin = array_key_exists('gtin', $body)
+        ? (preg_replace('/\D+/', '', (string) $body['gtin']) ?? '')
+        : (string) ($current['gtin'] ?? '');
+    $mpn = array_key_exists('mpn', $body) ? trim((string) $body['mpn']) : (string) ($current['mpn'] ?? '');
+    $googleCategory = array_key_exists('google_category', $body) ? trim((string) $body['google_category']) : (string) ($current['google_category'] ?? '');
     $brand = array_key_exists('brand', $body) ? trim((string) $body['brand']) : (string) ($current['brand'] ?? '');
     $model = array_key_exists('model', $body) ? trim((string) $body['model']) : (string) ($current['model'] ?? '');
     $imagePath = array_key_exists('image_path', $body) ? trim((string) $body['image_path']) : (string) ($current['image_path'] ?? '');
@@ -1097,10 +1157,13 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
     if ($name === '') {
         apiResponse(422, ['ok' => false, 'error' => 'Nome do produto nao pode ser vazio.']);
     }
+    if ($gtin !== '' && !in_array(strlen($gtin), [8, 12, 13, 14], true)) {
+        apiResponse(422, ['ok' => false, 'error' => 'GTIN deve ter 8, 12, 13 ou 14 digitos.']);
+    }
 
     $pdo->beginTransaction();
-    $upd = $pdo->prepare('UPDATE products SET name = ?, brand = ?, model = ?, image_path = ? WHERE id = ?');
-    $upd->execute([$name, $brand ?: null, $model ?: null, $imagePath ?: null, $id]);
+    $upd = $pdo->prepare('UPDATE products SET name = ?, sku = ?, description = ?, gtin = ?, mpn = ?, google_category = ?, brand = ?, model = ?, image_path = ? WHERE id = ?');
+    $upd->execute([$name, $sku ?: null, $description ?: null, $gtin ?: null, $mpn ?: null, $googleCategory ?: null, $brand ?: null, $model ?: null, $imagePath ?: null, $id]);
     if ($cars !== null) {
         syncProductCars($pdo, $id, $cars);
     }
@@ -1111,6 +1174,11 @@ if ($segments[0] === 'products' && $method === 'PATCH' && count($segments) === 2
         'data' => [
             'id' => $id,
             'name' => $name,
+            'sku' => $sku,
+            'description' => $description,
+            'gtin' => $gtin,
+            'mpn' => $mpn,
+            'google_category' => $googleCategory,
             'brand' => $brand,
             'model' => $model,
             'image_path' => $imagePath,

@@ -227,6 +227,13 @@ $productCarMap = productCarsMap($pdo, array_column($products, 'id'));
     <form class="bg-white p-4 rounded-lg shadow space-y-3" method="post" action="actions/product_save.php" enctype="multipart/form-data">
         <h3 class="font-semibold">Novo produto</h3>
         <input required name="name" placeholder="Nome do pneu" class="w-full border rounded px-3 py-2">
+        <input name="sku" maxlength="50" placeholder="SKU / codigo interno (opcional)" class="w-full border rounded px-3 py-2">
+        <textarea name="description" rows="3" placeholder="Descricao comercial para a loja e Google (opcional)" class="w-full border rounded px-3 py-2"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+            <input name="gtin" inputmode="numeric" maxlength="14" placeholder="GTIN / EAN" class="w-full border rounded px-3 py-2">
+            <input name="mpn" maxlength="70" placeholder="MPN / cod. fabricante" class="w-full border rounded px-3 py-2">
+        </div>
+        <input name="google_category" placeholder="Categoria Google (ex: Veiculos e pecas > Pecas)" class="w-full border rounded px-3 py-2">
         <select name="category" id="category" class="w-full border rounded px-3 py-2">
             <option value="pneu">Pneu</option>
             <option value="roda">Roda</option>
@@ -289,6 +296,7 @@ $productCarMap = productCarsMap($pdo, array_column($products, 'id'));
         <thead class="bg-slate-200">
             <tr>
                 <th class="p-3 text-left">Produto</th>
+                <th class="p-3 text-left">Merchant</th>
                 <th class="p-3 text-left">Imagem</th>
                 <th class="p-3 text-left">Categoria</th>
                 <th class="p-3 text-left">Estado</th>
@@ -307,13 +315,24 @@ $productCarMap = productCarsMap($pdo, array_column($products, 'id'));
         <tbody>
             <?php if (count($products) === 0): ?>
                 <tr class="border-t">
-                    <td class="p-3" colspan="14">Nenhum produto encontrado com os filtros informados.</td>
+                    <td class="p-3" colspan="15">Nenhum produto encontrado com os filtros informados.</td>
                 </tr>
             <?php endif; ?>
             <?php foreach ($products as $product): ?>
                 <tr class="border-t">
                     <td class="p-3">
                         <input form="price-form-<?= (int) $product['id'] ?>" required name="name" value="<?= htmlspecialchars((string) $product['name']) ?>" class="w-56 border rounded px-2 py-1">
+                    </td>
+                    <td class="p-3">
+                        <div class="grid w-72 gap-2">
+                            <input form="price-form-<?= (int) $product['id'] ?>" name="sku" maxlength="50" value="<?= htmlspecialchars((string) ($product['sku'] ?? '')) ?>" placeholder="SKU" class="w-full border rounded px-2 py-1">
+                            <textarea form="price-form-<?= (int) $product['id'] ?>" name="description" rows="2" placeholder="Descricao comercial" class="w-full border rounded px-2 py-1"><?= htmlspecialchars((string) ($product['description'] ?? '')) ?></textarea>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input form="price-form-<?= (int) $product['id'] ?>" name="gtin" maxlength="14" value="<?= htmlspecialchars((string) ($product['gtin'] ?? '')) ?>" placeholder="GTIN/EAN" class="w-full border rounded px-2 py-1">
+                                <input form="price-form-<?= (int) $product['id'] ?>" name="mpn" maxlength="70" value="<?= htmlspecialchars((string) ($product['mpn'] ?? '')) ?>" placeholder="MPN" class="w-full border rounded px-2 py-1">
+                            </div>
+                            <input form="price-form-<?= (int) $product['id'] ?>" name="google_category" value="<?= htmlspecialchars((string) ($product['google_category'] ?? '')) ?>" placeholder="Categoria Google" class="w-full border rounded px-2 py-1">
+                        </div>
                     </td>
                     <td class="p-3">
                         <?php if (!empty($product['image_path'])): ?>

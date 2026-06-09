@@ -10,6 +10,11 @@ ensureProductExtendedSchema($pdo);
 
 $productId = (int) ($_POST['product_id'] ?? 0);
 $name = trim((string) ($_POST['name'] ?? ''));
+$sku = trim((string) ($_POST['sku'] ?? ''));
+$description = trim((string) ($_POST['description'] ?? ''));
+$gtin = preg_replace('/\D+/', '', (string) ($_POST['gtin'] ?? '')) ?? '';
+$mpn = trim((string) ($_POST['mpn'] ?? ''));
+$googleCategory = trim((string) ($_POST['google_category'] ?? ''));
 $brand = trim((string) ($_POST['brand'] ?? ''));
 $model = trim((string) ($_POST['model'] ?? ''));
 $costPrice = (float) ($_POST['cost_price'] ?? -1);
@@ -28,16 +33,21 @@ if ($productId <= 0 || $name === '' || $costPrice < 0 || $salePrice < 0) {
     redirect('../index.php?page=estoque');
 }
 
+if ($gtin !== '' && !in_array(strlen($gtin), [8, 12, 13, 14], true)) {
+    flash('error', 'GTIN/EAN deve ter 8, 12, 13 ou 14 digitos.');
+    redirect('../index.php?page=estoque');
+}
+
 try {
     $imagePath = productImageUpload('image');
 
     $pdo->beginTransaction();
     if ($imagePath !== null) {
-        $stmt = $pdo->prepare('UPDATE products SET name = ?, brand = ?, model = ?, image_path = ?, cost_price = ?, sale_price = ? WHERE id = ?');
-        $stmt->execute([$name, $brand !== '' ? $brand : null, $model !== '' ? $model : null, $imagePath, $costPrice, $salePrice, $productId]);
+        $stmt = $pdo->prepare('UPDATE products SET name = ?, sku = ?, description = ?, gtin = ?, mpn = ?, google_category = ?, brand = ?, model = ?, image_path = ?, cost_price = ?, sale_price = ? WHERE id = ?');
+        $stmt->execute([$name, $sku ?: null, $description ?: null, $gtin ?: null, $mpn ?: null, $googleCategory ?: null, $brand ?: null, $model ?: null, $imagePath, $costPrice, $salePrice, $productId]);
     } else {
-        $stmt = $pdo->prepare('UPDATE products SET name = ?, brand = ?, model = ?, cost_price = ?, sale_price = ? WHERE id = ?');
-        $stmt->execute([$name, $brand !== '' ? $brand : null, $model !== '' ? $model : null, $costPrice, $salePrice, $productId]);
+        $stmt = $pdo->prepare('UPDATE products SET name = ?, sku = ?, description = ?, gtin = ?, mpn = ?, google_category = ?, brand = ?, model = ?, cost_price = ?, sale_price = ? WHERE id = ?');
+        $stmt->execute([$name, $sku ?: null, $description ?: null, $gtin ?: null, $mpn ?: null, $googleCategory ?: null, $brand ?: null, $model ?: null, $costPrice, $salePrice, $productId]);
     }
     syncProductCars($pdo, $productId, $cars);
     $pdo->commit();
@@ -64,6 +74,11 @@ if ($isAjax) {
         'data' => [
             'product_id' => $productId,
             'name' => $name,
+            'sku' => $sku,
+            'description' => $description,
+            'gtin' => $gtin,
+            'mpn' => $mpn,
+            'google_category' => $googleCategory,
             'brand' => $brand,
             'model' => $model,
             'cars' => $cars,
