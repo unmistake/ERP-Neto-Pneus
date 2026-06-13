@@ -1299,7 +1299,13 @@ if ($segments[0] === 'customers' && $method === 'GET' && count($segments) === 2)
     if ($id <= 0) {
         apiResponse(422, ['ok' => false, 'error' => 'ID invalido.']);
     }
-    $stmt = $pdo->prepare('SELECT id, first_name, last_name, email, phone, tax_id, car, notes, created_at FROM customers WHERE id = ?');
+    $stmt = $pdo->prepare(
+        'SELECT id, first_name, last_name, email, phone, tax_id, car, notes,
+                address_street, address_number, address_district, address_city,
+                address_state, address_zip, address_country, created_at
+         FROM customers
+         WHERE id = ?'
+    );
     $stmt->execute([$id]);
     $customer = $stmt->fetch();
     if (!$customer) {
