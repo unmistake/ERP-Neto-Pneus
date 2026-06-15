@@ -1,5 +1,7 @@
 ﻿# ERP Loja de Pneus (PHP + Tailwind + MySQL)
 
+> **Acompanhamento do projeto:** consulte o [painel de status e memoria oficial](PROJECT_STATUS.md).
+
 ## Requisitos
 - XAMPP com Apache + MySQL
 - PHP 8+

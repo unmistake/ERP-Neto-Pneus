@@ -213,11 +213,13 @@ if (count($todaySales) > 0) {
                     </td>
                     <td class="p-3">
                         <button type="button" class="text-blue-700 underline mr-3" onclick="showSaleDetails(<?= (int) $sale['id'] ?>)">Detalhes</button>
-                        <form method="post" action="actions/fiscal_issue.php" class="inline">
-                            <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
-                            <input type="hidden" name="return_page" value="pdv">
-                            <button type="submit" class="text-emerald-700 underline mr-3">Emitir NF-e</button>
-                        </form>
+                        <?php if (in_array(($sale['fiscal_status'] ?? 'not_requested'), ['not_requested', 'failed', 'cancelled'], true)): ?>
+                            <form method="post" action="actions/fiscal_issue.php" class="inline" data-fiscal-issue-form>
+                                <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                <input type="hidden" name="return_page" value="pdv">
+                                <button type="submit" class="text-emerald-700 underline mr-3 disabled:cursor-not-allowed disabled:text-slate-400">Emitir NF-e</button>
+                            </form>
+                        <?php endif; ?>
                         <?php if (($sale['fiscal_document_type'] ?? 'none') === 'nfe'): ?>
                             <form method="post" action="actions/fiscal_sync.php" class="inline">
                                 <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
@@ -290,6 +292,16 @@ const saleDetailsMeta = document.getElementById('sale-details-meta');
 const saleDetailsItems = document.getElementById('sale-details-items');
 const saleForm = document.querySelector('[data-sale-form]');
 const saleSubmitButton = document.querySelector('[data-sale-submit]');
+
+document.querySelectorAll('[data-fiscal-issue-form]').forEach((form) => {
+    form.addEventListener('submit', () => {
+        const button = form.querySelector('button[type="submit"]');
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Enviando...';
+        }
+    });
+});
 
 saleForm.addEventListener('submit', (event) => {
     if (saleForm.dataset.submitting === '1') {
