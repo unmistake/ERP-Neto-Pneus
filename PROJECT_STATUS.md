@@ -3,7 +3,7 @@
 > Memoria oficial do projeto. Leia este arquivo antes de iniciar qualquer tarefa.
 >
 > Ultima revisao: **2026-06-15**  
-> Commit analisado: **2254bc5** (`main`)  
+> Commit analisado: **fd1f486** (`main`)  
 > Progresso geral estimado: **65%**
 
 ## 1. Visao geral
@@ -44,7 +44,7 @@ flowchart LR
 
 ### Impedir novas NF-e duplicadas e preparar a regularizacao
 
-**Estado:** correcao implementada e validada; commit e deploy em andamento. Os 10 cancelamentos enviados foram recusados pela SEFAZ por prazo excedido.  
+**Estado:** prevencao implantada e validada em producao; regularizacao bloqueada pelo prazo fiscal. Os 10 cancelamentos enviados foram recusados pela SEFAZ por prazo excedido.  
 **Prioridade:** critica.
 
 ### Objetivo
@@ -163,6 +163,10 @@ de cancelamento das 10 autorizacoes excedentes.
 - Teste de idempotencia seguro na venda 64: contagem permaneceu em 6 documentos e a emissao reutilizou `NFE64T20260608161100`, sem criar nova NF-e.
 - `php -l` aprovado em `includes/fiscal_focus.php`, `pages/pdv.php`, `actions/fiscal_issue.php` e `actions/fiscal_cancel.php`.
 - `git diff --check`: aprovado.
+- Deploy `fd1f486` aplicado por fast-forward na VPS.
+- Producao: pagina inicial, PDV pela rota `index.php?page=pdv` e PDV mobile responderam `HTTP 200`.
+- Producao: `GET /api/health` sem token preservou `HTTP 401`.
+- Pos-deploy: nova chamada fiscal da venda 64 manteve 6 documentos e reutilizou a NF-e 1153.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -208,7 +212,7 @@ de cancelamento das 10 autorizacoes excedentes.
 | 2026-06-13 | Endereco do cliente na API protegida | Validado | Commit `2254bc5`; deploy na VPS, lint aprovado e API protegida preservou `401` sem token |
 | 2026-06-13 | Criacao da memoria oficial do projeto | Validado | Secoes obrigatorias, tarefa unica, link no README e `git diff --check` verificados |
 | 2026-06-15 | Auditoria de NF-e repetidas | Validado | Banco, API Focus e XML confirmaram 15 autorizacoes para 5 vendas e 10 documentos excedentes |
-| 2026-06-15 | Prevencao de novas NF-e duplicadas | Validado localmente, deploy pendente | Teste de integracao reutilizou a NF-e 1153 e manteve a contagem de documentos; lint e `git diff --check` aprovados |
+| 2026-06-15 | Prevencao de novas NF-e duplicadas | Implantado e validado | Commit `fd1f486`; teste pos-deploy reutilizou a NF-e 1153, manteve a contagem de documentos e PDV respondeu `HTTP 200` |
 | 2026-06-15 | Tentativa de cancelar 10 NF-e excedentes | Bloqueado por prazo fiscal | DELETE enviado por referencia exata; Focus/SEFAZ manteve todas autorizadas e retornou prazo de cancelamento excedido |
 
 ## 8. Regras de trabalho com o Codex
