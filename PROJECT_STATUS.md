@@ -44,7 +44,7 @@ flowchart LR
 
 ### Corrigir exibicao do botao de emissao de NF-e
 
-**Estado:** commit e deploy em andamento.
+**Estado:** implantado e validado em producao.
 **Prioridade:** critica.
 
 ### Objetivo
@@ -57,7 +57,7 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 - [x] Mostrar `Emitir NF-e` para vendas sem documento fiscal ativo.
 - [x] Manter `Emitir NF-e` oculto para vendas com NF-e `issued` ou documento ativo em processamento.
 - [x] Manter `Sincronizar`, `DANFE` e `Cancelar` apenas para vendas com NF-e existente.
-- [ ] Validar que o PDV renderiza em producao apos deploy.
+- [x] Validar que o PDV renderiza em producao apos deploy.
 - [x] Validar que a protecao de idempotencia fiscal continua funcionando no backend.
 
 ## 3. Fases
@@ -168,6 +168,9 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 - Simulacao com as 10 vendas mais recentes de producao indicou `show` para vendas sem documento fiscal ativo, incluindo as vendas 110, 107 e 105.
 - `php -l pages/pdv.php`: **aprovado**.
 - `git diff --check`: sem erro bloqueante; somente avisos de espaco ao final de linha ja existentes no painel.
+- Deploy `e4082a7` aplicado por fast-forward na VPS.
+- Producao: PDV desktop respondeu `HTTP 200`; PDV mobile respondeu `HTTP 200`; `GET /api/health` sem token preservou `HTTP 401`.
+- Pos-deploy: vendas recentes sem NF-e ativa, incluindo 110, 107 e 105, permaneceram elegiveis para exibir `Emitir NF-e`.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -215,7 +218,7 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 | 2026-06-15 | Auditoria de NF-e repetidas | Validado | Banco, API Focus e XML confirmaram 15 autorizacoes para 5 vendas e 10 documentos excedentes |
 | 2026-06-15 | Prevencao de novas NF-e duplicadas | Implantado e validado | Commit `fd1f486`; teste pos-deploy reutilizou a NF-e 1153, manteve a contagem de documentos e PDV respondeu `HTTP 200` |
 | 2026-06-15 | Tentativa de cancelar 10 NF-e excedentes | Bloqueado por prazo fiscal | DELETE enviado por referencia exata; Focus/SEFAZ manteve todas autorizadas e retornou prazo de cancelamento excedido |
-| 2026-06-16 | Correcao do botao `Emitir NF-e` | Implementado localmente, deploy pendente | Simulacao com dados reais de producao e lint do PDV aprovados |
+| 2026-06-16 | Correcao do botao `Emitir NF-e` | Implantado e validado | Commit `e4082a7`; PDV respondeu `HTTP 200` e vendas 110, 107 e 105 ficaram elegiveis para emissao |
 
 ## 8. Regras de trabalho com o Codex
 
