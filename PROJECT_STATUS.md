@@ -42,30 +42,23 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Impedir novas NF-e duplicadas e preparar a regularizacao
+### Corrigir exibicao do botao de emissao de NF-e
 
-**Estado:** prevencao implantada e validada em producao; regularizacao bloqueada pelo prazo fiscal. Os 10 cancelamentos enviados foram recusados pela SEFAZ por prazo excedido.  
+**Estado:** commit e deploy em andamento.
 **Prioridade:** critica.
 
 ### Objetivo
 
-Garantir que uma venda gere no maximo uma NF-e autorizada, reconciliar no ERP
-todos os documentos ja autorizados na Focus e registrar o resultado da tentativa
-de cancelamento das 10 autorizacoes excedentes.
+Restaurar a acao de emitir NF-e no PDV quando a venda ainda nao possui NF-e
+autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 
 ### Criterios objetivos de conclusao
 
-- [x] Reutilizar a referencia fiscal existente enquanto estiver processando.
-- [x] Bloquear nova emissao quando a venda possuir documento autorizado.
-- [x] Exibir apenas sincronizacao, PDF e cancelamento para vendas ja emitidas.
-- [x] Desabilitar o botao de emissao durante o envio.
-- [x] Sincronizar no ERP todas as referencias existentes antes de criar outra.
-- [ ] Criar teste automatizado provando uma unica autorizacao por venda.
-- [x] Reconciliar os 15 documentos consultados com numero, chave e status corretos.
-- [x] Gerar relatorio das 10 notas excedentes e do motivo da recusa.
-- [ ] Validar o fluxo corrigido em homologacao antes do deploy.
-- [x] Enviar via Focus o cancelamento das NF-e 1148-1152, 1154, 1156, 1161 e 1163-1164.
-- [x] Confirmar individualmente o resultado fiscal de cada cancelamento.
+- [x] Mostrar `Emitir NF-e` para vendas sem documento fiscal ativo.
+- [x] Manter `Emitir NF-e` oculto para vendas com NF-e `issued` ou documento ativo em processamento.
+- [x] Manter `Sincronizar`, `DANFE` e `Cancelar` apenas para vendas com NF-e existente.
+- [ ] Validar que o PDV renderiza em producao apos deploy.
+- [x] Validar que a protecao de idempotencia fiscal continua funcionando no backend.
 
 ## 3. Fases
 
@@ -168,6 +161,14 @@ de cancelamento das 10 autorizacoes excedentes.
 - Producao: `GET /api/health` sem token preservou `HTTP 401`.
 - Pos-deploy: nova chamada fiscal da venda 64 manteve 6 documentos e reutilizou a NF-e 1153.
 
+### Executadas em 2026-06-16
+
+- Causa da regressao confirmada: vendas `nfe/pending` sem registros em `fiscal_documents` ficavam sem botao de emissao.
+- Regra do PDV ajustada para consultar se existe NF-e real ativa antes de esconder `Emitir NF-e`.
+- Simulacao com as 10 vendas mais recentes de producao indicou `show` para vendas sem documento fiscal ativo, incluindo as vendas 110, 107 e 105.
+- `php -l pages/pdv.php`: **aprovado**.
+- `git diff --check`: sem erro bloqueante; somente avisos de espaco ao final de linha ja existentes no painel.
+
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
 | Lucas Lima | R$ 800,00 | 1148 a 1153 | 5 | ERP reconhece apenas a 1153 como autorizada |
@@ -214,6 +215,7 @@ de cancelamento das 10 autorizacoes excedentes.
 | 2026-06-15 | Auditoria de NF-e repetidas | Validado | Banco, API Focus e XML confirmaram 15 autorizacoes para 5 vendas e 10 documentos excedentes |
 | 2026-06-15 | Prevencao de novas NF-e duplicadas | Implantado e validado | Commit `fd1f486`; teste pos-deploy reutilizou a NF-e 1153, manteve a contagem de documentos e PDV respondeu `HTTP 200` |
 | 2026-06-15 | Tentativa de cancelar 10 NF-e excedentes | Bloqueado por prazo fiscal | DELETE enviado por referencia exata; Focus/SEFAZ manteve todas autorizadas e retornou prazo de cancelamento excedido |
+| 2026-06-16 | Correcao do botao `Emitir NF-e` | Implementado localmente, deploy pendente | Simulacao com dados reais de producao e lint do PDV aprovados |
 
 ## 8. Regras de trabalho com o Codex
 

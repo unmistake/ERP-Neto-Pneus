@@ -33,7 +33,7 @@ pdvEnsureCustomerSchema($pdo);
 
 $products = $pdo->query('SELECT id, name, sale_price AS price, stock_qty FROM products ORDER BY name')->fetchAll();
 $customers = $pdo->query("SELECT id, first_name, last_name, CONCAT(first_name, ' ', last_name) AS full_name, email, phone, tax_id, car, notes, address_street, address_number, address_district, address_city, address_state, address_zip, address_country FROM customers ORDER BY first_name, last_name")->fetchAll();
-$todaySales = $pdo->query('SELECT id, customer_name, seller_name, total_amount, payment_status, fiscal_document_type, fiscal_status, created_at FROM sales ORDER BY id DESC LIMIT 10')->fetchAll();
+$todaySales = [];
 $salesDetails = [];
 $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
 $saleRequestToken = bin2hex(random_bytes(32));
@@ -87,6 +87,33 @@ $pdo->exec(
        AND s.fiscal_status = 'issued'
        AND fd.status IN ('rejeitado', 'erro_envio')"
 );
+
+$todaySales = $pdo->query(
+    "SELECT
+        s.id,
+        s.customer_name,
+        s.seller_name,
+        s.total_amount,
+        s.payment_status,
+        s.fiscal_document_type,
+        s.fiscal_status,
+        s.created_at,
+        EXISTS (
+            SELECT 1
+            FROM fiscal_documents fd
+            WHERE fd.sale_id = s.id AND fd.document_type = 'nfe'
+        ) AS has_nfe_document,
+        EXISTS (
+            SELECT 1
+            FROM fiscal_documents fd
+            WHERE fd.sale_id = s.id
+              AND fd.document_type = 'nfe'
+              AND fd.status IN ('autorizado', 'processando', 'pendente')
+        ) AS has_active_nfe_document
+     FROM sales s
+     ORDER BY s.id DESC
+     LIMIT 10"
+)->fetchAll();
 
 if (count($todaySales) > 0) {
     $saleIds = array_map(static fn ($sale) => (int) $sale['id'], $todaySales);
@@ -197,6 +224,13 @@ if (count($todaySales) > 0) {
         </thead>
         <tbody>
             <?php foreach ($todaySales as $sale): ?>
+                <?php
+                    $hasNfeDocument = (bool) ($sale['has_nfe_document'] ?? false);
+                    $hasActiveNfeDocument = (bool) ($sale['has_active_nfe_document'] ?? false);
+                    $fiscalStatus = (string) ($sale['fiscal_status'] ?? 'not_requested');
+                    $isNfeSale = ($sale['fiscal_document_type'] ?? 'none') === 'nfe' || $hasNfeDocument;
+                    $canIssueNfe = !$hasActiveNfeDocument && $fiscalStatus !== 'issued';
+                ?>
                 <tr class="border-t">
                     <td class="p-3"><?= htmlspecialchars($sale['created_at']) ?></td>
                     <td class="p-3"><?= htmlspecialchars($sale['customer_name'] ?: 'Consumidor final') ?></td>
@@ -204,30 +238,30 @@ if (count($todaySales) > 0) {
                     <td class="p-3"><?= money((float) $sale['total_amount']) ?></td>
                     <td class="p-3"><?= $sale['payment_status'] === 'paid' ? 'Pago' : 'Pendente' ?></td>
                     <td class="p-3">
-                        <?php if (($sale['fiscal_document_type'] ?? 'none') === 'nfe'): ?>
+                        <?php if ($isNfeSale): ?>
                             <span class="inline-block px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">NF-e</span>
-                            <div class="text-xs text-slate-600 mt-1"><?= htmlspecialchars((string) ($sale['fiscal_status'] ?? 'pending')) ?></div>
+                            <div class="text-xs text-slate-600 mt-1"><?= htmlspecialchars($fiscalStatus) ?></div>
                         <?php else: ?>
                             <span class="inline-block px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold">Sem NF-e</span>
                         <?php endif; ?>
                     </td>
                     <td class="p-3">
                         <button type="button" class="text-blue-700 underline mr-3" onclick="showSaleDetails(<?= (int) $sale['id'] ?>)">Detalhes</button>
-                        <?php if (in_array(($sale['fiscal_status'] ?? 'not_requested'), ['not_requested', 'failed', 'cancelled'], true)): ?>
+                        <?php if ($canIssueNfe): ?>
                             <form method="post" action="actions/fiscal_issue.php" class="inline" data-fiscal-issue-form>
                                 <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
                                 <input type="hidden" name="return_page" value="pdv">
                                 <button type="submit" class="text-emerald-700 underline mr-3 disabled:cursor-not-allowed disabled:text-slate-400">Emitir NF-e</button>
                             </form>
                         <?php endif; ?>
-                        <?php if (($sale['fiscal_document_type'] ?? 'none') === 'nfe'): ?>
+                        <?php if ($hasNfeDocument): ?>
                             <form method="post" action="actions/fiscal_sync.php" class="inline">
                                 <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
                                 <input type="hidden" name="return_page" value="pdv">
                                 <button type="submit" class="text-sky-700 underline mr-3">Sincronizar NF-e</button>
                             </form>
                             <a href="actions/fiscal_download_pdf.php?sale_id=<?= (int) $sale['id'] ?>" class="text-slate-700 underline mr-3">PDF NF-e</a>
-                            <?php if (($sale['fiscal_status'] ?? '') === 'issued'): ?>
+                            <?php if ($fiscalStatus === 'issued'): ?>
                                 <form method="post" action="actions/fiscal_cancel.php" class="inline" onsubmit="return confirm('Confirmar cancelamento da NF-e desta venda? Esta acao sera enviada para a SEFAZ.');">
                                     <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
                                     <input type="hidden" name="return_page" value="pdv">
