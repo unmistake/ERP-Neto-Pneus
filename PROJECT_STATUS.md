@@ -44,7 +44,7 @@ flowchart LR
 
 ### Adicionar ranking de vendedores ao dashboard
 
-**Estado:** implementado localmente; deploy pendente.
+**Estado:** implantado e validado parcialmente.
 **Prioridade:** media.
 
 ### Objetivo
@@ -59,7 +59,7 @@ de vendas, ticket medio e maior venda individual.
 - [x] Renderizar ranking responsivo no dashboard sem alterar o fluxo de PDV.
 - [x] Validar sintaxe PHP do dashboard.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar dashboard em producao apos deploy.
+- [x] Validar dashboard em producao apos deploy.
 
 ## 3. Fases
 
@@ -213,7 +213,8 @@ de vendas, ticket medio e maior venda individual.
 - Ranking mensal de vendedores implementado localmente no dashboard com agregacao por `sales.seller_name`, cards de destaque e tabela responsiva.
 - `php -l pages/dashboard.php`: aprovado.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
-- Validacao em producao pendente, pois o deploy nao foi solicitado nesta tarefa.
+- Deploy `60e1cf4` aplicado por fast-forward na VPS.
+- Producao: `php -l pages/dashboard.php` aprovado na VPS apos deploy.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -266,7 +267,7 @@ de vendas, ticket medio e maior venda individual.
 | 2026-06-20 | Recuperacao da rejeicao NF-e 539 | Implementado localmente, deploy pendente | Resposta real extraiu NF-e 1175 e proximo numero 1176; lint aprovado sem emitir documento |
 | 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
-| 2026-06-25 | Ranking mensal de vendedores no dashboard | Implementado localmente, deploy pendente | `php -l pages/dashboard.php` e `git diff --check` aprovados; validacao em producao pendente |
+| 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
 
 ## 8. Regras de trabalho com o Codex
 
