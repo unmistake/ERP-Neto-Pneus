@@ -44,7 +44,7 @@ flowchart LR
 
 ### Criar login administrativo do ERP
 
-**Estado:** implementado localmente; deploy pendente.
+**Estado:** implantado e validado parcialmente em producao.
 **Prioridade:** critica.
 
 ### Objetivo
@@ -63,7 +63,7 @@ PDV mobile usado pelos vendedores.
 - [x] Manter `pdv_mobile` publico por enquanto.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar login real em producao apos deploy.
+- [x] Validar login real em producao apos deploy.
 
 ## 3. Fases
 
@@ -209,7 +209,9 @@ PDV mobile usado pelos vendedores.
 - Actions administrativas diretas passaram a exigir sessao; `sale_finalize.php` permaneceu publico para preservar o fluxo do `pdv_mobile`.
 - `php -l` aprovado em `index.php`, `includes/auth.php`, `includes/layout.php`, `pages/login.php`, `actions/logout.php` e 18 actions administrativas protegidas.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
-- Validacao real de login e criacao do usuario inicial em producao ficou pendente de deploy.
+- Deploy `ba54467` aplicado por fast-forward na VPS.
+- Producao: dashboard sem sessao retornou `302` para `index.php?page=login`; login respondeu `HTTP 200`; `pdv_mobile` respondeu `HTTP 200`.
+- Usuario `admin` confirmado em producao como ativo e senha inicial `neto001` validada por `password_verify`; login real atualizou `last_login_at`.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -261,6 +263,7 @@ PDV mobile usado pelos vendedores.
 | 2026-06-16 | MVP de envio de NF-e por WhatsApp | Implementado localmente, aguardando credenciais | Lint aprovado e configuracao padrao validada como desativada |
 | 2026-06-20 | Recuperacao da rejeicao NF-e 539 | Implementado localmente, deploy pendente | Resposta real extraiu NF-e 1175 e proximo numero 1176; lint aprovado sem emitir documento |
 | 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
+| 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
 
 ## 8. Regras de trabalho com o Codex
 
