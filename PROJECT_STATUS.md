@@ -42,28 +42,24 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Criar login administrativo do ERP
+### Diagnosticar sincronizacao de NF-e recebidas sem retorno
 
-**Estado:** implantado e validado parcialmente em producao.
-**Prioridade:** critica.
+**Estado:** implementado localmente; deploy pendente.
+**Prioridade:** alta.
 
 ### Objetivo
 
-Proteger o dashboard e as areas administrativas do ERP com login por usuario e
-senha, criando o primeiro usuario administrador sem quebrar o acesso publico ao
-PDV mobile usado pelos vendedores.
+Identificar por que a Focus responde sucesso na sincronizacao de NF-e recebidas,
+mas retorna zero documentos e versao zero para o CNPJ consultado.
 
 ### Criterios objetivos de conclusao
 
-- [x] Criar tabela `system_users` com senha criptografada.
-- [x] Criar usuario inicial `admin`.
-- [x] Criar tela de login e action de logout.
-- [x] Exigir autenticacao para dashboard e paginas administrativas.
-- [x] Bloquear actions administrativas diretas sem sessao.
-- [x] Manter `pdv_mobile` publico por enquanto.
+- [x] Salvar diagnostico da ultima resposta da Focus sem expor dados sensiveis.
+- [x] Exibir HTTP, total, campos e amostra tecnica na tela de NF-e Entrada.
+- [x] Sincronizar `sql/schema.sql` com as colunas de diagnostico.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [x] Validar login real em producao apos deploy.
+- [ ] Validar nova sincronizacao em producao apos deploy.
 
 ## 3. Fases
 
@@ -212,6 +208,8 @@ PDV mobile usado pelos vendedores.
 - Deploy `ba54467` aplicado por fast-forward na VPS.
 - Producao: dashboard sem sessao retornou `302` para `index.php?page=login`; login respondeu `HTTP 200`; `pdv_mobile` respondeu `HTTP 200`.
 - Usuario `admin` confirmado em producao como ativo e senha inicial `neto001` validada por `password_verify`; login real atualizou `last_login_at`.
+- Diagnostico de NF-e recebida implementado localmente para gravar `last_http_status`, `last_response_keys` e `last_response_sample` sanitizado quando a Focus retorna sucesso sem documentos.
+- `php -l includes/inbound_nfe_focus.php` e `php -l pages/nfe_entrada.php`: aprovados.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|

@@ -125,6 +125,33 @@ function inboundNfeStatusClass(?string $status): string
     </div>
 </div>
 
+<?php if ($state && count($notes) === 0 && !empty($state['last_synced_at'])): ?>
+    <div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-black">A Focus respondeu com sucesso, mas nao retornou NF-e para gravar.</p>
+        <p class="mt-1">Isso normalmente significa que ainda nao ha documentos disponiveis para o CNPJ consultado, que a distribuicao DFe acabou de ser habilitada e ainda nao carregou historico, ou que o retorno veio em um formato diferente do esperado.</p>
+        <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+            <div class="rounded-xl bg-white/70 p-3">
+                <p class="text-xs font-bold uppercase">HTTP Focus</p>
+                <p class="font-black"><?= htmlspecialchars((string) ($state['last_http_status'] ?? '-')) ?></p>
+            </div>
+            <div class="rounded-xl bg-white/70 p-3">
+                <p class="text-xs font-bold uppercase">Total informado</p>
+                <p class="font-black"><?= htmlspecialchars((string) ($state['last_total_count'] ?? '0')) ?></p>
+            </div>
+            <div class="rounded-xl bg-white/70 p-3">
+                <p class="text-xs font-bold uppercase">Campos retornados</p>
+                <p class="break-words font-mono text-xs"><?= htmlspecialchars((string) ($state['last_response_keys'] ?? '-')) ?></p>
+            </div>
+        </div>
+        <?php if (!empty($state['last_response_sample'])): ?>
+            <details class="mt-3">
+                <summary class="cursor-pointer font-bold">Ver amostra tecnica do retorno</summary>
+                <pre class="mt-2 max-h-64 overflow-auto rounded-xl bg-slate-950 p-3 text-xs text-slate-100"><?= htmlspecialchars((string) $state['last_response_sample']) ?></pre>
+            </details>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
 <div class="mb-6 overflow-hidden rounded-2xl bg-white shadow">
     <div class="border-b border-slate-100 p-4">
         <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

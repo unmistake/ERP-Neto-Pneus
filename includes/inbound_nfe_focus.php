@@ -19,6 +19,19 @@ function inboundNfeEnsureSchema(PDO $pdo): void
         )"
     );
 
+    $stateColumns = [
+        'last_http_status' => "ALTER TABLE inbound_nfe_sync_state ADD COLUMN last_http_status INT NULL AFTER last_total_count",
+        'last_response_keys' => "ALTER TABLE inbound_nfe_sync_state ADD COLUMN last_response_keys VARCHAR(255) NULL AFTER last_http_status",
+        'last_response_sample' => "ALTER TABLE inbound_nfe_sync_state ADD COLUMN last_response_sample TEXT NULL AFTER last_response_keys",
+    ];
+
+    foreach ($stateColumns as $column => $sql) {
+        $exists = (bool) $pdo->query("SHOW COLUMNS FROM inbound_nfe_sync_state LIKE " . $pdo->quote($column))->fetch();
+        if (!$exists) {
+            $pdo->exec($sql);
+        }
+    }
+
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS inbound_nfes (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,6 +78,33 @@ function inboundNfeEnsureSchema(PDO $pdo): void
             CONSTRAINT fk_inbound_nfe_item_doc FOREIGN KEY (inbound_nfe_id) REFERENCES inbound_nfes(id) ON DELETE CASCADE
         )"
     );
+}
+
+function inboundNfeResponseKeys(array $body): string
+{
+    if (array_is_list($body)) {
+        return 'array_list';
+    }
+
+    return mb_substr(implode(', ', array_slice(array_keys($body), 0, 20)), 0, 255);
+}
+
+function inboundNfeSanitizedSample(array $body): string
+{
+    $sample = $body;
+    if (array_is_list($sample) && count($sample) > 3) {
+        $sample = array_slice($sample, 0, 3);
+    }
+
+    $json = json_encode($sample, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($json)) {
+        return '';
+    }
+
+    $json = preg_replace('/"([0-9]{2}\\.?[0-9]{3}\\.?[0-9]{3}\\/?[0-9]{4}-?[0-9]{2})"/', '"[cnpj]"', $json) ?? $json;
+    $json = preg_replace('/"([0-9]{44})"/', '"[chave_nfe]"', $json) ?? $json;
+
+    return mb_substr($json, 0, 1500);
 }
 
 function inboundNfeConfig(): array
@@ -441,12 +481,20 @@ function inboundNfeSync(PDO $pdo, bool $full = false, bool $pendingOnly = false)
     }
 
     $totalCount = isset($response['headers']['x-total-count']) ? (int) $response['headers']['x-total-count'] : count($notes);
+    $responseKeys = inboundNfeResponseKeys($body);
+    $responseSample = inboundNfeSanitizedSample($body);
     $saveState = $pdo->prepare(
-        "INSERT INTO inbound_nfe_sync_state (recipient_cnpj, last_version, last_total_count, last_synced_at)
-         VALUES (?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE last_version = GREATEST(last_version, VALUES(last_version)), last_total_count = VALUES(last_total_count), last_synced_at = NOW()"
+        "INSERT INTO inbound_nfe_sync_state (recipient_cnpj, last_version, last_total_count, last_http_status, last_response_keys, last_response_sample, last_synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+            last_version = GREATEST(last_version, VALUES(last_version)),
+            last_total_count = VALUES(last_total_count),
+            last_http_status = VALUES(last_http_status),
+            last_response_keys = VALUES(last_response_keys),
+            last_response_sample = VALUES(last_response_sample),
+            last_synced_at = NOW()"
     );
-    $saveState->execute([$cfg['recipient_cnpj'], $maxVersion, $totalCount]);
+    $saveState->execute([$cfg['recipient_cnpj'], $maxVersion, $totalCount, $response['status'], $responseKeys, $responseSample]);
 
     return [
         'stored' => $stored,
@@ -454,5 +502,6 @@ function inboundNfeSync(PDO $pdo, bool $full = false, bool $pendingOnly = false)
         'total_count' => $totalCount,
         'max_version' => $maxVersion,
         'last_version_before' => $lastVersion,
+        'response_keys' => $responseKeys,
     ];
 }
