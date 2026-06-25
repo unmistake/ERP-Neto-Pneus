@@ -44,7 +44,7 @@ flowchart LR
 
 ### Criar tela de NF-e de entrada via Focus
 
-**Estado:** implementado localmente; validacao operacional e deploy pendentes.
+**Estado:** implantado e validado parcialmente em producao.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -62,7 +62,8 @@ conferencia operacional.
 - [x] Permitir download do DANFE PDF pela chave da NF-e recebida.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar sincronizacao real na VPS ou com MySQL local ativo.
+- [x] Validar criacao de tabelas e renderizacao da tela em producao.
+- [ ] Validar sincronizacao real com a Focus em producao.
 
 ## 3. Fases
 
@@ -99,7 +100,7 @@ conferencia operacional.
 
 ### Em andamento
 
-- [ ] Validar tela de NF-e de entrada com sincronizacao real da Focus.
+- [ ] Validar sincronizacao real de NF-e recebidas com a Focus em producao.
 
 ### Proxima fila
 
@@ -199,6 +200,10 @@ conferencia operacional.
 - `php -l` aprovado em `includes/inbound_nfe_focus.php`, `pages/nfe_entrada.php`, `actions/inbound_nfe_sync.php`, `actions/inbound_nfe_download_pdf.php`, `index.php` e `includes/layout.php`.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
 - MySQL local nao validado: conexao recusada em `127.0.0.1:3306`, portanto a renderizacao da tela e a sincronizacao real com Focus ficaram pendentes.
+- Deploy `961f34f` aplicado por fast-forward na VPS.
+- Producao: `https://erp-netorodas.online/index.php?page=nfe_entrada` respondeu `HTTP 200` e conteve o titulo `NF-e recebidas`.
+- Producao: tabelas `inbound_nfe_sync_state`, `inbound_nfes` e `inbound_nfe_items` confirmadas como existentes.
+- Sincronizacao real com a Focus ainda nao foi executada nesta validacao para evitar gravacao operacional sem acompanhamento.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -249,6 +254,7 @@ conferencia operacional.
 | 2026-06-16 | Correcao do botao `Emitir NF-e` | Implantado e validado | Commit `e4082a7`; PDV respondeu `HTTP 200` e vendas 110, 107 e 105 ficaram elegiveis para emissao |
 | 2026-06-16 | MVP de envio de NF-e por WhatsApp | Implementado localmente, aguardando credenciais | Lint aprovado e configuracao padrao validada como desativada |
 | 2026-06-20 | Recuperacao da rejeicao NF-e 539 | Implementado localmente, deploy pendente | Resposta real extraiu NF-e 1175 e proximo numero 1176; lint aprovado sem emitir documento |
+| 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
 
 ## 8. Regras de trabalho com o Codex
 
