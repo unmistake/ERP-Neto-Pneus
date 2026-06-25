@@ -71,11 +71,13 @@ function inboundNfeConfig(): array
 {
     $cfg = fiscalFocusConfig();
     $issuerCnpj = inboundNfeOnlyDigits((string) (($cfg['issuer']['cnpj'] ?? '') ?: ''));
+    $recipientCnpj = inboundNfeOnlyDigits((string) (($cfg['inbound_recipient_cnpj'] ?? '') ?: $issuerCnpj));
 
     return [
         'base_url' => $cfg['base_url'],
         'token' => $cfg['token'],
-        'recipient_cnpj' => $issuerCnpj,
+        'recipient_cnpj' => $recipientCnpj,
+        'issuer_cnpj' => $issuerCnpj,
     ];
 }
 
@@ -398,6 +400,9 @@ function inboundNfeSync(PDO $pdo, bool $full = false, bool $pendingOnly = false)
     $response = inboundNfeFocusJsonRequest('GET', '/v2/nfes_recebidas', $query);
     if ($response['status'] < 200 || $response['status'] >= 300) {
         $message = (string) (inboundNfeFindValue($response['body'], ['mensagem', 'message', 'erro']) ?? $response['raw']);
+        if ($response['status'] === 400 && stripos($message, 'CNPJ do emitente') !== false) {
+            $message .= ' CNPJ consultado: ' . $cfg['recipient_cnpj'] . '. Verifique se este CNPJ esta habilitado na Focus para consulta de NF-e recebidas/DF-e e, se necessario, configure FOCUS_INBOUND_RECIPIENT_CNPJ.';
+        }
         throw new RuntimeException('Focus retornou HTTP ' . $response['status'] . ' ao consultar NF-e recebidas: ' . $message);
     }
 

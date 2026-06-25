@@ -26,6 +26,11 @@ return [
             'cpf_cnpj_contabilidade' => getenv('FOCUS_ACCOUNTING_CNPJ') ?: '13937073000156',
         ],
 
+        // CNPJ usado para consultar NF-e recebidas contra a empresa.
+        // Por padrao usa o CNPJ do emitente, mas pode ser sobrescrito caso
+        // a Focus autorize outro CNPJ/filial para distribuicao DFe.
+        'inbound_recipient_cnpj' => getenv('FOCUS_INBOUND_RECIPIENT_CNPJ') ?: '',
+
         // Padroes fiscais usados quando o produto ainda nao tem cadastro fiscal proprio.
         // Confirme estes valores com o contador antes de usar em producao.
         'nfe_defaults' => [

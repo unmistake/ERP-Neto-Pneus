@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/inbound_nfe_focus.php';
 
 inboundNfeEnsureSchema($pdo);
+$inboundNfeConfig = inboundNfeConfig();
 
 $search = trim((string) ($_GET['q'] ?? ''));
 $status = trim((string) ($_GET['status'] ?? ''));
@@ -120,7 +121,7 @@ function inboundNfeStatusClass(?string $status): string
     <div class="rounded-2xl bg-white p-4 shadow lg:col-span-2">
         <p class="text-xs font-bold uppercase text-slate-500">Ultima sincronizacao</p>
         <p class="mt-1 text-lg font-black text-slate-950"><?= htmlspecialchars((string) ($state['last_synced_at'] ?? 'Ainda nao sincronizado')) ?></p>
-        <p class="text-xs text-slate-500">A Focus retorna lotes de ate 100 notas; execute novamente se houver mais registros pendentes.</p>
+        <p class="text-xs text-slate-500">CNPJ consultado: <?= htmlspecialchars(inboundNfeFormatCnpj($inboundNfeConfig['recipient_cnpj'] ?? '')) ?>. A Focus retorna lotes de ate 100 notas.</p>
     </div>
 </div>
 

@@ -42,26 +42,25 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Adicionar previa de fornecedores na NF-e de entrada
+### Diagnosticar autorizacao de NF-e recebidas na Focus
 
 **Estado:** implementado localmente; deploy pendente.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Mostrar uma previa agrupada dos fornecedores que emitiram NF-e contra o CNPJ da
-empresa, com acao rapida para abrir as notas daquele fornecedor no painel e
-sincronizar novas notas antes da conferencia.
+Tratar o erro de autorizacao da Focus ao consultar NF-e recebidas, separando o
+CNPJ usado para recebimento do CNPJ emissor e exibindo uma mensagem operacional
+clara quando a Focus ainda nao autorizou o CNPJ para DFe/NF-e recebidas.
 
 ### Criterios objetivos de conclusao
 
-- [x] Agrupar fornecedores por CNPJ/nome na tela de NF-e Entrada.
-- [x] Exibir quantidade de notas, valor total e ultima emissao por fornecedor.
-- [x] Adicionar botao para filtrar/abrir notas do fornecedor no painel.
-- [x] Adicionar botao para sincronizar novas notas e voltar filtrado no fornecedor.
-- [x] Validar sintaxe PHP da tela alterada.
+- [x] Permitir configurar CNPJ de NF-e recebida separadamente via `FOCUS_INBOUND_RECIPIENT_CNPJ`.
+- [x] Exibir na tela qual CNPJ esta sendo usado na consulta.
+- [x] Melhorar mensagem de erro HTTP 400 da Focus com causa provavel e acao recomendada.
+- [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar visualmente em producao apos deploy.
+- [ ] Habilitar/confirmar na Focus o CNPJ para consulta de NF-e recebidas/DF-e.
 
 ## 3. Fases
 
@@ -202,6 +201,7 @@ sincronizar novas notas antes da conferencia.
 - Producao: `https://erp-netorodas.online/index.php?page=nfe_entrada` respondeu `HTTP 200` e conteve o titulo `NF-e recebidas`.
 - Producao: tabelas `inbound_nfe_sync_state`, `inbound_nfes` e `inbound_nfe_items` confirmadas como existentes.
 - Sincronizacao real com a Focus ainda nao foi executada nesta validacao para evitar gravacao operacional sem acompanhamento.
+- Tentativa operacional de sincronizacao retornou `HTTP 400: CNPJ do emitente nao autorizado ou nao informado` para o CNPJ `35732524000151`; a documentacao da Focus define `cnpj` como CNPJ da empresa recebedora, indicando necessidade de habilitacao/autorizacao do CNPJ na Focus para NF-e recebidas/DF-e ou configuracao de outro CNPJ via `FOCUS_INBOUND_RECIPIENT_CNPJ`.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|

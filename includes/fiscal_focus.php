@@ -68,6 +68,7 @@ function fiscalFocusConfig(): array
         'numero' => trim((string) ($focus['numero'] ?? '')),
         'base_url' => rtrim($baseUrl, '/'),
         'issuer' => $focus['issuer'] ?? [],
+        'inbound_recipient_cnpj' => $focus['inbound_recipient_cnpj'] ?? '',
         'nfe_defaults' => $focus['nfe_defaults'] ?? ($focus['nfce_defaults'] ?? []),
         'nfe_recipient_address' => $focus['nfe_recipient_address'] ?? [],
     ];
