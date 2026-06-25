@@ -40,6 +40,18 @@ CREATE TABLE IF NOT EXISTS product_cars (
     CONSTRAINT fk_product_cars_car FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS system_users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(80) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('admin') NOT NULL DEFAULT 'admin',
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    last_login_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_system_users_username (username)
+);
+
 CREATE TABLE IF NOT EXISTS stock_movements (
     id INT AUTO_INCREMENT PRIMARY KEY,
     product_id INT NOT NULL,

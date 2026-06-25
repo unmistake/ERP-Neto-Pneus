@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/auth.php';
 $flash = getFlash();
 $currentPage = $page ?? 'dashboard';
+$currentUser = authCurrentUser();
 $navigation = [
     ['page' => 'dashboard', 'label' => 'Dashboard', 'href' => 'index.php'],
     ['page' => 'estoque', 'label' => 'Estoque', 'href' => 'index.php?page=estoque'],
@@ -57,7 +59,15 @@ function navigationLinkClass(string $itemPage, string $currentPage): string
                 </a>
             <?php endforeach; ?>
         </nav>
-        <p class="mt-8 text-xs leading-relaxed text-slate-500">Gestao de estoque, vendas, clientes e financeiro.</p>
+        <?php if ($currentUser): ?>
+            <div class="mt-8 rounded-2xl bg-slate-900 p-3 text-xs text-slate-300">
+                <p class="font-bold text-white"><?= htmlspecialchars($currentUser['username']) ?></p>
+                <form method="post" action="actions/logout.php" class="mt-2">
+                    <button class="text-rose-300 underline">Sair</button>
+                </form>
+            </div>
+        <?php endif; ?>
+        <p class="mt-4 text-xs leading-relaxed text-slate-500">Gestao de estoque, vendas, clientes e financeiro.</p>
     </aside>
 
     <div class="min-w-0 flex-1">
@@ -106,6 +116,11 @@ function navigationLinkClass(string $itemPage, string $currentPage): string
                     </a>
                 <?php endforeach; ?>
             </nav>
+            <?php if ($currentUser): ?>
+                <form method="post" action="actions/logout.php" class="mt-4">
+                    <button class="w-full rounded-xl bg-slate-800 px-3 py-3 text-left text-sm font-bold text-rose-200">Sair de <?= htmlspecialchars($currentUser['username']) ?></button>
+                </form>
+            <?php endif; ?>
         </aside>
 
         <main class="min-w-0 p-4 sm:p-5 md:p-8">

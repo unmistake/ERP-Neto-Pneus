@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+authRequireActionLogin();
 
 $txnId = (int) ($_POST['txn_id'] ?? 0);
 if ($txnId <= 0) {

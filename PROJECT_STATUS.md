@@ -42,25 +42,28 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Diagnosticar autorizacao de NF-e recebidas na Focus
+### Criar login administrativo do ERP
 
 **Estado:** implementado localmente; deploy pendente.
-**Prioridade:** alta.
+**Prioridade:** critica.
 
 ### Objetivo
 
-Tratar o erro de autorizacao da Focus ao consultar NF-e recebidas, separando o
-CNPJ usado para recebimento do CNPJ emissor e exibindo uma mensagem operacional
-clara quando a Focus ainda nao autorizou o CNPJ para DFe/NF-e recebidas.
+Proteger o dashboard e as areas administrativas do ERP com login por usuario e
+senha, criando o primeiro usuario administrador sem quebrar o acesso publico ao
+PDV mobile usado pelos vendedores.
 
 ### Criterios objetivos de conclusao
 
-- [x] Permitir configurar CNPJ de NF-e recebida separadamente via `FOCUS_INBOUND_RECIPIENT_CNPJ`.
-- [x] Exibir na tela qual CNPJ esta sendo usado na consulta.
-- [x] Melhorar mensagem de erro HTTP 400 da Focus com causa provavel e acao recomendada.
+- [x] Criar tabela `system_users` com senha criptografada.
+- [x] Criar usuario inicial `admin`.
+- [x] Criar tela de login e action de logout.
+- [x] Exigir autenticacao para dashboard e paginas administrativas.
+- [x] Bloquear actions administrativas diretas sem sessao.
+- [x] Manter `pdv_mobile` publico por enquanto.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Habilitar/confirmar na Focus o CNPJ para consulta de NF-e recebidas/DF-e.
+- [ ] Validar login real em producao apos deploy.
 
 ## 3. Fases
 
@@ -202,6 +205,11 @@ clara quando a Focus ainda nao autorizou o CNPJ para DFe/NF-e recebidas.
 - Producao: tabelas `inbound_nfe_sync_state`, `inbound_nfes` e `inbound_nfe_items` confirmadas como existentes.
 - Sincronizacao real com a Focus ainda nao foi executada nesta validacao para evitar gravacao operacional sem acompanhamento.
 - Tentativa operacional de sincronizacao retornou `HTTP 400: CNPJ do emitente nao autorizado ou nao informado` para o CNPJ `35732524000151`; a documentacao da Focus define `cnpj` como CNPJ da empresa recebedora, indicando necessidade de habilitacao/autorizacao do CNPJ na Focus para NF-e recebidas/DF-e ou configuracao de outro CNPJ via `FOCUS_INBOUND_RECIPIENT_CNPJ`.
+- Login administrativo implementado localmente com tabela `system_users`, usuario inicial `admin`, senha inicial definida por `ERP_ADMIN_DEFAULT_PASSWORD` com fallback `neto001`, tela `login`, logout e bloqueio das paginas administrativas.
+- Actions administrativas diretas passaram a exigir sessao; `sale_finalize.php` permaneceu publico para preservar o fluxo do `pdv_mobile`.
+- `php -l` aprovado em `index.php`, `includes/auth.php`, `includes/layout.php`, `pages/login.php`, `actions/logout.php` e 18 actions administrativas protegidas.
+- `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
+- Validacao real de login e criacao do usuario inicial em producao ficou pendente de deploy.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
