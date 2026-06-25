@@ -2,7 +2,7 @@
 
 > Memoria oficial do projeto. Leia este arquivo antes de iniciar qualquer tarefa.
 >
-> Ultima revisao: **2026-06-15**  
+> Ultima revisao: **2026-06-25**
 > Commit analisado: **fd1f486** (`main`)  
 > Progresso geral estimado: **65%**
 
@@ -42,23 +42,27 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Corrigir exibicao do botao de emissao de NF-e
+### Criar tela de NF-e de entrada via Focus
 
-**Estado:** implantado e validado em producao.
-**Prioridade:** critica.
+**Estado:** implementado localmente; validacao operacional e deploy pendentes.
+**Prioridade:** alta.
 
 ### Objetivo
 
-Restaurar a acao de emitir NF-e no PDV quando a venda ainda nao possui NF-e
-autorizada ou em processamento, preservando o bloqueio contra duplicidade.
+Listar no ERP as NF-e emitidas por fornecedores contra o CNPJ da empresa usando a
+API da Focus, com sincronizacao incremental e download de DANFE em PDF para
+conferencia operacional.
 
 ### Criterios objetivos de conclusao
 
-- [x] Mostrar `Emitir NF-e` para vendas sem documento fiscal ativo.
-- [x] Manter `Emitir NF-e` oculto para vendas com NF-e `issued` ou documento ativo em processamento.
-- [x] Manter `Sincronizar`, `DANFE` e `Cancelar` apenas para vendas com NF-e existente.
-- [x] Validar que o PDV renderiza em producao apos deploy.
-- [x] Validar que a protecao de idempotencia fiscal continua funcionando no backend.
+- [x] Criar schema local para NF-e recebidas, itens e controle de sincronizacao.
+- [x] Consultar `GET /v2/nfes_recebidas` por CNPJ com parametro incremental `versao`.
+- [x] Persistir ou atualizar notas recebidas sem duplicar por chave de acesso.
+- [x] Criar tela responsiva para listar, filtrar e sincronizar notas recebidas.
+- [x] Permitir download do DANFE PDF pela chave da NF-e recebida.
+- [x] Validar sintaxe PHP dos arquivos alterados.
+- [x] Registrar evidencias e lacunas de validacao.
+- [ ] Validar sincronizacao real na VPS ou com MySQL local ativo.
 
 ## 3. Fases
 
@@ -95,7 +99,7 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 
 ### Em andamento
 
-- [ ] Impedir novas NF-e duplicadas e preparar a regularizacao.
+- [ ] Validar tela de NF-e de entrada com sincronizacao real da Focus.
 
 ### Proxima fila
 
@@ -107,6 +111,7 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 - [ ] Resolver e monitorar os 3 status fiscais pendentes e documentos em processamento.
 - [ ] Validar importacao CSV/OFX com extratos reais anonimizados dos tres bancos.
 - [ ] Implementar conciliacao entre movimento bancario, venda, custo, conta a receber e conta a pagar.
+- [ ] Importar itens de NF-e recebida para cadastro/entrada de estoque apos conferencia.
 - [ ] Definir politica de estoque negativo e alertas operacionais.
 - [ ] Documentar deploy atual da VPS e remover do README o fluxo antigo como caminho principal.
 - [ ] Criar rotina de backup e testar restauracao do banco.
@@ -171,6 +176,29 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 - Deploy `e4082a7` aplicado por fast-forward na VPS.
 - Producao: PDV desktop respondeu `HTTP 200`; PDV mobile respondeu `HTTP 200`; `GET /api/health` sem token preservou `HTTP 401`.
 - Pos-deploy: vendas recentes sem NF-e ativa, incluindo 110, 107 e 105, permaneceram elegiveis para exibir `Emitir NF-e`.
+- MVP local de WhatsApp para NF-e criado com `config/whatsapp.php`, `includes/whatsapp_service.php`, log `whatsapp_messages` e disparo automatico apos NF-e `issued`.
+- Validacao sem credenciais: configuracao carregou como `WHATSAPP_DISABLED_OK`, evitando envio acidental.
+- `php -l` aprovado em `config/whatsapp.php`, `includes/whatsapp_service.php`, `includes/fiscal_focus.php`, `actions/fiscal_issue.php` e `actions/fiscal_sync.php`.
+
+### Executadas em 2026-06-20
+
+- Rejeicao 539 vinculada a venda 150, cliente Emerson Bonfim De Jesus, total R$ 920,00 e referencia `NFE150T20260620111245`.
+- As duas chaves apontam para modelo 55, serie 55 e numero 1175; nao existe NF-e 1175 registrada no ERP, indicando numeracao usada fora deste fluxo.
+- Parser validado com a resposta real: extraiu `NUMBER=1175` e calculou `NEXT=1176`.
+- Classificador passou a preservar `mensagem_sefaz` completa em vez de apenas `erro_autorizacao`.
+- Recuperacao limitada a uma tentativa por chamada, com referencias distintas e trava MySQL por venda e por serie.
+- `php -l includes/fiscal_focus.php` e `php -l actions/fiscal_issue.php`: aprovados.
+- Nenhuma NF-e foi emitida durante a validacao local.
+
+### Executadas em 2026-06-25
+
+- Criada integracao local de NF-e recebida pela Focus com `GET /v2/nfes_recebidas`, controle incremental por `versao` e persistencia por chave de acesso.
+- Criadas tabelas `inbound_nfe_sync_state`, `inbound_nfes` e `inbound_nfe_items` no runtime e no `sql/schema.sql`.
+- Criada tela `nfe_entrada` com filtros por fornecedor/chave/numero, status e periodo, alem de botoes de sincronizacao e download de DANFE.
+- Criadas actions `actions/inbound_nfe_sync.php` e `actions/inbound_nfe_download_pdf.php`.
+- `php -l` aprovado em `includes/inbound_nfe_focus.php`, `pages/nfe_entrada.php`, `actions/inbound_nfe_sync.php`, `actions/inbound_nfe_download_pdf.php`, `index.php` e `includes/layout.php`.
+- `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
+- MySQL local nao validado: conexao recusada em `127.0.0.1:3306`, portanto a renderizacao da tela e a sincronizacao real com Focus ficaram pendentes.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -219,6 +247,8 @@ autorizada ou em processamento, preservando o bloqueio contra duplicidade.
 | 2026-06-15 | Prevencao de novas NF-e duplicadas | Implantado e validado | Commit `fd1f486`; teste pos-deploy reutilizou a NF-e 1153, manteve a contagem de documentos e PDV respondeu `HTTP 200` |
 | 2026-06-15 | Tentativa de cancelar 10 NF-e excedentes | Bloqueado por prazo fiscal | DELETE enviado por referencia exata; Focus/SEFAZ manteve todas autorizadas e retornou prazo de cancelamento excedido |
 | 2026-06-16 | Correcao do botao `Emitir NF-e` | Implantado e validado | Commit `e4082a7`; PDV respondeu `HTTP 200` e vendas 110, 107 e 105 ficaram elegiveis para emissao |
+| 2026-06-16 | MVP de envio de NF-e por WhatsApp | Implementado localmente, aguardando credenciais | Lint aprovado e configuracao padrao validada como desativada |
+| 2026-06-20 | Recuperacao da rejeicao NF-e 539 | Implementado localmente, deploy pendente | Resposta real extraiu NF-e 1175 e proximo numero 1176; lint aprovado sem emitir documento |
 
 ## 8. Regras de trabalho com o Codex
 

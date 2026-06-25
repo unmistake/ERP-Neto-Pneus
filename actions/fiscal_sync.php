@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/fiscal_focus.php';
+require_once __DIR__ . '/../includes/whatsapp_service.php';
 
 $saleId = (int) ($_POST['sale_id'] ?? 0);
 $returnPage = trim((string) ($_POST['return_page'] ?? 'pdv'));
@@ -22,7 +23,14 @@ try {
     if ($saleFiscalStatus === 'failed') {
         flash('error', 'NF-e da venda #' . $saleId . ' rejeitada: ' . ($msg !== '' ? $msg : 'Falha fiscal.'));
     } elseif ($saleFiscalStatus === 'issued') {
-        flash('success', 'NF-e da venda #' . $saleId . ' autorizada. ' . ($msg !== '' ? 'Focus: ' . $msg : ''));
+        $whatsapp = whatsappTrySendNfePdf($pdo, $saleId);
+        $whatsappMsg = '';
+        if (($whatsapp['status'] ?? '') === 'sent') {
+            $whatsappMsg = ' PDF enviado no WhatsApp do cliente.';
+        } elseif (($whatsapp['status'] ?? '') === 'failed') {
+            $whatsappMsg = ' WhatsApp nao enviado: ' . (string) ($whatsapp['message'] ?? 'erro desconhecido');
+        }
+        flash('success', 'NF-e da venda #' . $saleId . ' autorizada. ' . ($msg !== '' ? 'Focus: ' . $msg : '') . $whatsappMsg);
     } else {
         flash('success', 'NF-e da venda #' . $saleId . ' ainda esta em processamento. ' . ($msg !== '' ? 'Focus: ' . $msg : ''));
     }
@@ -31,4 +39,3 @@ try {
 }
 
 redirect('../index.php?page=' . $returnPage);
-

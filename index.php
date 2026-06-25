@@ -6,7 +6,7 @@ require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/functions.php';
 
 $page = $_GET['page'] ?? 'dashboard';
-$allowedPages = ['dashboard', 'estoque', 'pdv', 'pdv_mobile', 'financeiro', 'crm'];
+$allowedPages = ['dashboard', 'estoque', 'pdv', 'pdv_mobile', 'financeiro', 'crm', 'nfe_entrada'];
 
 if (!in_array($page, $allowedPages, true)) {
     $page = 'dashboard';

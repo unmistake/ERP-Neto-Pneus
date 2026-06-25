@@ -387,7 +387,7 @@ function fiscalClassifyFocusResponse(int $httpStatus, array $body, string $raw):
         $cStat = fiscalExtractXmlTag($raw, 'cStat');
     }
 
-    $reason = fiscalExtractValueRecursive($body, ['xMotivo', 'motivo', 'mensagem', 'message', 'erro', 'error', 'erro_autorizacao']);
+    $reason = fiscalExtractValueRecursive($body, ['mensagem_sefaz', 'xMotivo', 'motivo', 'mensagem', 'message', 'erro', 'error', 'erro_autorizacao']);
     if ($reason === null && trim($raw) !== '') {
         $reason = fiscalExtractXmlTag($raw, 'xMotivo');
     }
@@ -467,6 +467,90 @@ function fiscalReleaseSaleLock(PDO $pdo, int $saleId): void
     $stmt->execute(['erp:nfe:sale:' . $saleId]);
 }
 
+function fiscalAcquireSeriesLock(PDO $pdo, string $environment, int $series): string
+{
+    $lockName = 'erp:nfe:' . $environment . ':series:' . $series;
+    $stmt = $pdo->prepare('SELECT GET_LOCK(?, 10)');
+    $stmt->execute([$lockName]);
+    if ((int) $stmt->fetchColumn() !== 1) {
+        throw new RuntimeException('Outra NF-e desta serie esta sendo emitida. Tente novamente em instantes.');
+    }
+
+    return $lockName;
+}
+
+function fiscalReleaseNamedLock(PDO $pdo, string $lockName): void
+{
+    $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+    $stmt->execute([$lockName]);
+}
+
+function fiscalExtractDuplicateNfeNumber(array $body): ?int
+{
+    $statusSefaz = (string) (fiscalExtractValueRecursive($body, ['status_sefaz', 'cStat']) ?? '');
+    if ($statusSefaz !== '539') {
+        return null;
+    }
+
+    $message = (string) (fiscalExtractValueRecursive($body, ['mensagem_sefaz', 'xMotivo', 'mensagem']) ?? '');
+    if (preg_match_all('/\b\d{44}\b/', $message, $matches) < 1) {
+        return null;
+    }
+
+    $numbers = [];
+    foreach ($matches[0] as $accessKey) {
+        if (substr($accessKey, 20, 2) !== '55') {
+            continue;
+        }
+        $numbers[] = (int) substr($accessKey, 25, 9);
+    }
+
+    return $numbers !== [] ? max($numbers) : null;
+}
+
+function fiscalPersistIssueResponse(PDO $pdo, int $saleId, string $referenceCode, array $payload, array $response, string $environment): array
+{
+    $status = (int) ($response['status'] ?? 0);
+    $body = (array) ($response['body'] ?? []);
+    $raw = (string) ($response['raw'] ?? '');
+    $classification = fiscalClassifyFocusResponse($status, $body, $raw);
+    $focusId = (string) ($body['id'] ?? $body['chave_nfe'] ?? $body['chave'] ?? '');
+    $accessKey = (string) ($body['chave_nfe'] ?? $body['chave'] ?? '');
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO fiscal_documents
+            (sale_id, document_type, reference_code, environment, status, focus_id, access_key, number, series, danfe_path, xml_path, message, request_payload, response_payload)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $saleId,
+        'nfe',
+        $referenceCode,
+        $environment,
+        $classification['document_status'],
+        $focusId !== '' ? $focusId : null,
+        $accessKey !== '' ? $accessKey : null,
+        isset($body['numero']) ? (string) $body['numero'] : null,
+        isset($body['serie']) ? (string) $body['serie'] : null,
+        fiscalExtractDanfePath($body),
+        fiscalExtractXmlPath($body),
+        $classification['message'],
+        json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+
+    return [
+        'fiscal_document_id' => (int) $pdo->lastInsertId(),
+        'reference_code' => $referenceCode,
+        'focus_http_status' => $status,
+        'focus_response' => $body,
+        'message' => $classification['message'],
+        'sale_fiscal_status' => $classification['sale_status'],
+        'status' => $classification['document_status'],
+        'reused_reference' => false,
+    ];
+}
+
 function fiscalSyncNfeDocument(PDO $pdo, int $saleId, int $documentId): array
 {
     $stmt = $pdo->prepare(
@@ -540,9 +624,11 @@ function fiscalIssueNfeBySale(PDO $pdo, int $saleId): array
 {
     fiscalEnsureSchema($pdo);
     fiscalAcquireSaleLock($pdo, $saleId);
+    $seriesLockName = null;
 
     try {
         $cfg = fiscalFocusConfig();
+        $duplicateNumber = null;
         $existingStmt = $pdo->prepare(
             "SELECT id
              FROM fiscal_documents
@@ -556,59 +642,51 @@ function fiscalIssueNfeBySale(PDO $pdo, int $saleId): array
             if (in_array($existingResult['sale_fiscal_status'], ['issued', 'pending'], true)) {
                 return $existingResult;
             }
+            $foundDuplicateNumber = fiscalExtractDuplicateNfeNumber((array) ($existingResult['focus_response'] ?? []));
+            if ($foundDuplicateNumber !== null) {
+                $duplicateNumber = max($duplicateNumber ?? 0, $foundDuplicateNumber);
+            }
+        }
+
+        $seriesLockName = fiscalAcquireSeriesLock($pdo, $cfg['environment'], (int) $cfg['serie']);
+        if ($duplicateNumber !== null) {
+            $maxNumberStmt = $pdo->prepare(
+                "SELECT MAX(CAST(number AS UNSIGNED))
+                 FROM fiscal_documents
+                 WHERE document_type = 'nfe' AND environment = ? AND series = ?
+                   AND number IS NOT NULL AND status IN ('autorizado', 'processando')"
+            );
+            $maxNumberStmt->execute([$cfg['environment'], (string) $cfg['serie']]);
+            $duplicateNumber = max($duplicateNumber, (int) $maxNumberStmt->fetchColumn());
         }
 
         $referenceCode = 'NFE' . $saleId . 'T' . date('YmdHis');
+        if ($duplicateNumber !== null) {
+            $referenceCode .= 'R' . ($duplicateNumber + 1);
+        }
         $payload = fiscalBuildNfePayload($pdo, $saleId, $referenceCode);
+        if ($duplicateNumber !== null) {
+            $payload['numero'] = (string) ($duplicateNumber + 1);
+        }
 
         $response = fiscalFocusRequest('POST', '/v2/nfe?ref=' . urlencode($referenceCode), $payload);
-        $status = $response['status'];
-        $body = $response['body'];
-        $raw = (string) ($response['raw'] ?? '');
+        $result = fiscalPersistIssueResponse($pdo, $saleId, $referenceCode, $payload, $response, $cfg['environment']);
 
-        $classification = fiscalClassifyFocusResponse($status, $body, $raw);
-        $docStatus = $classification['document_status'];
-        $message = $classification['message'];
-        $focusId = (string) ($body['id'] ?? $body['chave_nfe'] ?? $body['chave'] ?? '');
-        $accessKey = (string) ($body['chave_nfe'] ?? $body['chave'] ?? '');
-        $number = isset($body['numero']) ? (string) $body['numero'] : null;
-        $series = isset($body['serie']) ? (string) $body['serie'] : null;
-        $danfePath = fiscalExtractDanfePath($body);
-        $xmlPath = fiscalExtractXmlPath($body);
+        $rejectedNumber = fiscalExtractDuplicateNfeNumber((array) ($result['focus_response'] ?? []));
+        if ($duplicateNumber === null && $rejectedNumber !== null) {
+            $retryNumber = $rejectedNumber + 1;
+            $retryReference = 'NFE' . $saleId . 'T' . date('YmdHis') . 'R' . $retryNumber;
+            $retryPayload = fiscalBuildNfePayload($pdo, $saleId, $retryReference);
+            $retryPayload['numero'] = (string) $retryNumber;
+            $retryResponse = fiscalFocusRequest('POST', '/v2/nfe?ref=' . urlencode($retryReference), $retryPayload);
+            return fiscalPersistIssueResponse($pdo, $saleId, $retryReference, $retryPayload, $retryResponse, $cfg['environment']);
+        }
 
-        $stmt = $pdo->prepare(
-            'INSERT INTO fiscal_documents
-                (sale_id, document_type, reference_code, environment, status, focus_id, access_key, number, series, danfe_path, xml_path, message, request_payload, response_payload)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-        $stmt->execute([
-            $saleId,
-            'nfe',
-            $referenceCode,
-            $cfg['environment'],
-            $docStatus,
-            $focusId !== '' ? $focusId : null,
-            $accessKey !== '' ? $accessKey : null,
-            $number,
-            $series,
-            $danfePath,
-            $xmlPath,
-            $message,
-            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        ]);
-
-        return [
-            'fiscal_document_id' => (int) $pdo->lastInsertId(),
-            'reference_code' => $referenceCode,
-            'focus_http_status' => $status,
-            'focus_response' => $body,
-            'message' => $message,
-            'sale_fiscal_status' => $classification['sale_status'],
-            'status' => $docStatus,
-            'reused_reference' => false,
-        ];
+        return $result;
     } finally {
+        if ($seriesLockName !== null) {
+            fiscalReleaseNamedLock($pdo, $seriesLockName);
+        }
         fiscalReleaseSaleLock($pdo, $saleId);
     }
 }
@@ -638,7 +716,7 @@ function fiscalDownloadLatestNfeDanfe(PDO $pdo, int $saleId): array
     fiscalEnsureSchema($pdo);
 
     $stmt = $pdo->prepare(
-        "SELECT id, reference_code, danfe_path, response_payload
+        "SELECT id
          FROM fiscal_documents
          WHERE sale_id = ? AND document_type = 'nfe'
          ORDER BY id DESC
@@ -650,9 +728,28 @@ function fiscalDownloadLatestNfeDanfe(PDO $pdo, int $saleId): array
         throw new RuntimeException('Nenhuma NF-e encontrada para download nesta venda.');
     }
 
+    return fiscalDownloadNfeDanfeByDocument($pdo, $saleId, (int) $doc['id']);
+}
+
+function fiscalDownloadNfeDanfeByDocument(PDO $pdo, int $saleId, int $documentId): array
+{
+    fiscalEnsureSchema($pdo);
+
+    $stmt = $pdo->prepare(
+        "SELECT id, reference_code, danfe_path, response_payload
+         FROM fiscal_documents
+         WHERE id = ? AND sale_id = ? AND document_type = 'nfe'
+         LIMIT 1"
+    );
+    $stmt->execute([$documentId, $saleId]);
+    $doc = $stmt->fetch();
+    if (!$doc) {
+        throw new RuntimeException('NF-e nao encontrada para download nesta venda.');
+    }
+
     $danfePath = trim((string) ($doc['danfe_path'] ?? ''));
     if ($danfePath === '') {
-        $result = fiscalSyncLatestNfeBySale($pdo, $saleId);
+        $result = fiscalSyncNfeDocument($pdo, $saleId, (int) $doc['id']);
         $danfePath = (string) fiscalExtractDanfePath((array) ($result['focus_response'] ?? []));
     }
 

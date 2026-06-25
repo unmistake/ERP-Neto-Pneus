@@ -171,3 +171,57 @@ CREATE TABLE IF NOT EXISTS fiscal_documents (
     CONSTRAINT fk_fiscal_sale FOREIGN KEY (sale_id) REFERENCES sales(id)
 );
 
+CREATE TABLE IF NOT EXISTS inbound_nfe_sync_state (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recipient_cnpj VARCHAR(14) NOT NULL,
+    last_version BIGINT NOT NULL DEFAULT 0,
+    last_total_count INT NULL,
+    last_synced_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_inbound_nfe_sync_cnpj (recipient_cnpj)
+);
+
+CREATE TABLE IF NOT EXISTS inbound_nfes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    access_key VARCHAR(44) NOT NULL,
+    recipient_cnpj VARCHAR(14) NOT NULL,
+    version BIGINT NULL,
+    status VARCHAR(60) NULL,
+    manifest_status VARCHAR(80) NULL,
+    supplier_name VARCHAR(180) NULL,
+    supplier_cnpj VARCHAR(14) NULL,
+    number VARCHAR(30) NULL,
+    series VARCHAR(20) NULL,
+    issue_date DATETIME NULL,
+    total_amount DECIMAL(12,2) NULL,
+    danfe_path VARCHAR(255) NULL,
+    xml_path VARCHAR(255) NULL,
+    raw_payload LONGTEXT NULL,
+    last_synced_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_inbound_nfe_access_key (access_key),
+    KEY idx_inbound_nfe_recipient (recipient_cnpj),
+    KEY idx_inbound_nfe_supplier (supplier_cnpj),
+    KEY idx_inbound_nfe_issue_date (issue_date)
+);
+
+CREATE TABLE IF NOT EXISTS inbound_nfe_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    inbound_nfe_id INT NOT NULL,
+    item_number INT NULL,
+    supplier_sku VARCHAR(80) NULL,
+    description VARCHAR(255) NOT NULL,
+    ncm VARCHAR(20) NULL,
+    cfop VARCHAR(10) NULL,
+    unit VARCHAR(20) NULL,
+    quantity DECIMAL(12,4) NULL,
+    unit_price DECIMAL(12,4) NULL,
+    total_amount DECIMAL(12,2) NULL,
+    raw_payload LONGTEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_inbound_nfe_item_doc (inbound_nfe_id),
+    CONSTRAINT fk_inbound_nfe_item_doc FOREIGN KEY (inbound_nfe_id) REFERENCES inbound_nfes(id) ON DELETE CASCADE
+);
+

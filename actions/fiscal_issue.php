@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/fiscal_focus.php';
+require_once __DIR__ . '/../includes/whatsapp_service.php';
 
 $saleId = (int) ($_POST['sale_id'] ?? 0);
 $returnPage = trim((string) ($_POST['return_page'] ?? 'pdv'));
@@ -36,7 +37,14 @@ try {
     } elseif ($saleFiscalStatus === 'issued') {
         $upd = $pdo->prepare("UPDATE sales SET fiscal_document_type = 'nfe', fiscal_status = 'issued' WHERE id = ?");
         $upd->execute([$saleId]);
-        flash('success', 'NF-e autorizada para venda #' . $saleId . '. ' . ($msg !== '' ? 'Focus: ' . $msg : ''));
+        $whatsapp = whatsappTrySendNfePdf($pdo, $saleId);
+        $whatsappMsg = '';
+        if (($whatsapp['status'] ?? '') === 'sent') {
+            $whatsappMsg = ' PDF enviado no WhatsApp do cliente.';
+        } elseif (($whatsapp['status'] ?? '') === 'failed') {
+            $whatsappMsg = ' WhatsApp nao enviado: ' . (string) ($whatsapp['message'] ?? 'erro desconhecido');
+        }
+        flash('success', 'NF-e autorizada para venda #' . $saleId . '. ' . ($msg !== '' ? 'Focus: ' . $msg : '') . $whatsappMsg);
     } else {
         $upd = $pdo->prepare("UPDATE sales SET fiscal_document_type = 'nfe', fiscal_status = 'pending' WHERE id = ?");
         $upd->execute([$saleId]);
