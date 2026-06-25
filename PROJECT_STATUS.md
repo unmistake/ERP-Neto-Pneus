@@ -42,28 +42,26 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Criar tela de NF-e de entrada via Focus
+### Adicionar previa de fornecedores na NF-e de entrada
 
-**Estado:** implantado e validado parcialmente em producao.
+**Estado:** implementado localmente; deploy pendente.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Listar no ERP as NF-e emitidas por fornecedores contra o CNPJ da empresa usando a
-API da Focus, com sincronizacao incremental e download de DANFE em PDF para
-conferencia operacional.
+Mostrar uma previa agrupada dos fornecedores que emitiram NF-e contra o CNPJ da
+empresa, com acao rapida para abrir as notas daquele fornecedor no painel e
+sincronizar novas notas antes da conferencia.
 
 ### Criterios objetivos de conclusao
 
-- [x] Criar schema local para NF-e recebidas, itens e controle de sincronizacao.
-- [x] Consultar `GET /v2/nfes_recebidas` por CNPJ com parametro incremental `versao`.
-- [x] Persistir ou atualizar notas recebidas sem duplicar por chave de acesso.
-- [x] Criar tela responsiva para listar, filtrar e sincronizar notas recebidas.
-- [x] Permitir download do DANFE PDF pela chave da NF-e recebida.
-- [x] Validar sintaxe PHP dos arquivos alterados.
+- [x] Agrupar fornecedores por CNPJ/nome na tela de NF-e Entrada.
+- [x] Exibir quantidade de notas, valor total e ultima emissao por fornecedor.
+- [x] Adicionar botao para filtrar/abrir notas do fornecedor no painel.
+- [x] Adicionar botao para sincronizar novas notas e voltar filtrado no fornecedor.
+- [x] Validar sintaxe PHP da tela alterada.
 - [x] Registrar evidencias e lacunas de validacao.
-- [x] Validar criacao de tabelas e renderizacao da tela em producao.
-- [ ] Validar sincronizacao real com a Focus em producao.
+- [ ] Validar visualmente em producao apos deploy.
 
 ## 3. Fases
 

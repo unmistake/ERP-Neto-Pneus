@@ -46,6 +46,20 @@ $notes = $stmt->fetchAll();
 
 $statuses = $pdo->query("SELECT DISTINCT status FROM inbound_nfes WHERE status IS NOT NULL AND status <> '' ORDER BY status")->fetchAll(PDO::FETCH_COLUMN);
 $state = $pdo->query('SELECT * FROM inbound_nfe_sync_state ORDER BY last_synced_at DESC LIMIT 1')->fetch();
+$suppliers = $pdo->query(
+    "SELECT
+        COALESCE(NULLIF(supplier_cnpj, ''), CONCAT('name:', COALESCE(NULLIF(supplier_name, ''), 'Fornecedor nao informado'))) AS supplier_key,
+        COALESCE(NULLIF(supplier_name, ''), 'Fornecedor nao informado') AS supplier_name,
+        NULLIF(supplier_cnpj, '') AS supplier_cnpj,
+        COUNT(*) AS note_count,
+        COALESCE(SUM(total_amount), 0) AS total_amount,
+        MAX(issue_date) AS last_issue_date,
+        MAX(last_synced_at) AS last_synced_at
+     FROM inbound_nfes
+     GROUP BY supplier_key, supplier_name, supplier_cnpj
+     ORDER BY last_issue_date DESC, note_count DESC
+     LIMIT 30"
+)->fetchAll();
 $returnQueryParams = $_GET;
 unset($returnQueryParams['page']);
 $returnQuery = http_build_query($returnQueryParams);
@@ -108,6 +122,72 @@ function inboundNfeStatusClass(?string $status): string
         <p class="mt-1 text-lg font-black text-slate-950"><?= htmlspecialchars((string) ($state['last_synced_at'] ?? 'Ainda nao sincronizado')) ?></p>
         <p class="text-xs text-slate-500">A Focus retorna lotes de ate 100 notas; execute novamente se houver mais registros pendentes.</p>
     </div>
+</div>
+
+<div class="mb-6 overflow-hidden rounded-2xl bg-white shadow">
+    <div class="border-b border-slate-100 p-4">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+                <h3 class="text-lg font-black text-slate-950">Fornecedores encontrados</h3>
+                <p class="text-sm text-slate-500">Previa agrupada das empresas que emitiram NF-e contra seu CNPJ.</p>
+            </div>
+            <span class="text-xs font-bold uppercase tracking-wide text-slate-400"><?= count($suppliers) ?> fornecedor(es)</span>
+        </div>
+    </div>
+
+    <?php if (!$suppliers): ?>
+        <div class="p-6 text-center text-sm text-slate-500">
+            Nenhum fornecedor encontrado ainda. Clique em <strong>Sincronizar novas</strong> para puxar as NF-e recebidas da Focus.
+        </div>
+    <?php else: ?>
+        <div class="grid grid-cols-1 divide-y divide-slate-100 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            <?php foreach ($suppliers as $supplier): ?>
+                <?php
+                    $supplierName = (string) ($supplier['supplier_name'] ?? 'Fornecedor nao informado');
+                    $supplierCnpj = (string) ($supplier['supplier_cnpj'] ?? '');
+                    $supplierFilter = $supplierCnpj !== '' ? $supplierCnpj : $supplierName;
+                    $supplierQuery = http_build_query(['q' => $supplierFilter]);
+                    $supplierReturnQuery = http_build_query(['q' => $supplierFilter]);
+                ?>
+                <div class="p-4">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="min-w-0">
+                            <p class="truncate text-base font-black text-slate-950"><?= htmlspecialchars($supplierName) ?></p>
+                            <p class="text-xs text-slate-500"><?= htmlspecialchars($supplierCnpj !== '' ? inboundNfeFormatCnpj($supplierCnpj) : 'CNPJ nao informado') ?></p>
+                            <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                <div class="rounded-xl bg-slate-50 p-2">
+                                    <p class="font-bold text-slate-500">Notas</p>
+                                    <p class="text-lg font-black text-slate-950"><?= (int) $supplier['note_count'] ?></p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 p-2">
+                                    <p class="font-bold text-slate-500">Total</p>
+                                    <p class="text-sm font-black text-slate-950"><?= money((float) $supplier['total_amount']) ?></p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 p-2">
+                                    <p class="font-bold text-slate-500">Ultima</p>
+                                    <p class="text-sm font-black text-slate-950">
+                                        <?= htmlspecialchars($supplier['last_issue_date'] ? date('d/m/y', strtotime((string) $supplier['last_issue_date'])) : '-') ?>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex shrink-0 flex-col gap-2 sm:w-40">
+                            <a href="index.php?page=nfe_entrada&<?= htmlspecialchars($supplierQuery) ?>" class="rounded-xl bg-slate-900 px-3 py-2 text-center text-xs font-bold text-white hover:bg-slate-800">
+                                Ver notas
+                            </a>
+                            <form method="post" action="actions/inbound_nfe_sync.php">
+                                <input type="hidden" name="mode" value="incremental">
+                                <input type="hidden" name="return_query" value="<?= htmlspecialchars($supplierReturnQuery) ?>">
+                                <button class="w-full rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">
+                                    Sincronizar e abrir
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </div>
 
 <form method="get" class="mb-6 grid grid-cols-1 gap-3 rounded-2xl bg-white p-4 shadow lg:grid-cols-5">
