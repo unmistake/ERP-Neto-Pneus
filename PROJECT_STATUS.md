@@ -42,24 +42,24 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Diagnosticar sincronizacao de NF-e recebidas sem retorno
+### Adicionar ranking de vendedores ao dashboard
 
 **Estado:** implementado localmente; deploy pendente.
-**Prioridade:** alta.
+**Prioridade:** media.
 
 ### Objetivo
 
-Identificar por que a Focus responde sucesso na sincronizacao de NF-e recebidas,
-mas retorna zero documentos e versao zero para o CNPJ consultado.
+Exibir no dashboard um ranking mensal de vendedores com volume vendido, quantidade
+de vendas, ticket medio e maior venda individual.
 
 ### Criterios objetivos de conclusao
 
-- [x] Salvar diagnostico da ultima resposta da Focus sem expor dados sensiveis.
-- [x] Exibir HTTP, total, campos e amostra tecnica na tela de NF-e Entrada.
-- [x] Sincronizar `sql/schema.sql` com as colunas de diagnostico.
-- [x] Validar sintaxe PHP dos arquivos alterados.
+- [x] Agregar vendas do mes atual por vendedor usando `sales.seller_name`.
+- [x] Exibir maiores destaques: volume vendido, quantidade de vendas, ticket medio e maior venda.
+- [x] Renderizar ranking responsivo no dashboard sem alterar o fluxo de PDV.
+- [x] Validar sintaxe PHP do dashboard.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar nova sincronizacao em producao apos deploy.
+- [ ] Validar dashboard em producao apos deploy.
 
 ## 3. Fases
 
@@ -210,6 +210,10 @@ mas retorna zero documentos e versao zero para o CNPJ consultado.
 - Usuario `admin` confirmado em producao como ativo e senha inicial `neto001` validada por `password_verify`; login real atualizou `last_login_at`.
 - Diagnostico de NF-e recebida implementado localmente para gravar `last_http_status`, `last_response_keys` e `last_response_sample` sanitizado quando a Focus retorna sucesso sem documentos.
 - `php -l includes/inbound_nfe_focus.php` e `php -l pages/nfe_entrada.php`: aprovados.
+- Ranking mensal de vendedores implementado localmente no dashboard com agregacao por `sales.seller_name`, cards de destaque e tabela responsiva.
+- `php -l pages/dashboard.php`: aprovado.
+- `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
+- Validacao em producao pendente, pois o deploy nao foi solicitado nesta tarefa.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -262,6 +266,7 @@ mas retorna zero documentos e versao zero para o CNPJ consultado.
 | 2026-06-20 | Recuperacao da rejeicao NF-e 539 | Implementado localmente, deploy pendente | Resposta real extraiu NF-e 1175 e proximo numero 1176; lint aprovado sem emitir documento |
 | 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
+| 2026-06-25 | Ranking mensal de vendedores no dashboard | Implementado localmente, deploy pendente | `php -l pages/dashboard.php` e `git diff --check` aprovados; validacao em producao pendente |
 
 ## 8. Regras de trabalho com o Codex
 

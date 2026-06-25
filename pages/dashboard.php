@@ -42,6 +42,43 @@ $dailyRows = $pdo->query(
      ORDER BY daily_sales.sale_date ASC"
 )->fetchAll();
 
+$sellerRankingRows = $pdo->query(
+    "SELECT
+        COALESCE(NULLIF(TRIM(seller_name), ''), 'Sem vendedor') AS seller_name,
+        COUNT(*) AS sales_count,
+        COALESCE(SUM(total_amount), 0) AS sales_volume,
+        COALESCE(AVG(total_amount), 0) AS avg_ticket,
+        COALESCE(MAX(total_amount), 0) AS biggest_sale
+     FROM sales
+     WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+       AND created_at < DATE_ADD(LAST_DAY(CURDATE()), INTERVAL 1 DAY)
+     GROUP BY COALESCE(NULLIF(TRIM(seller_name), ''), 'Sem vendedor')
+     ORDER BY sales_volume DESC, sales_count DESC, avg_ticket DESC
+     LIMIT 20"
+)->fetchAll();
+
+$sellerHighlights = [
+    'volume' => null,
+    'count' => null,
+    'ticket' => null,
+    'biggest' => null,
+];
+
+foreach ($sellerRankingRows as $row) {
+    if ($sellerHighlights['volume'] === null || (float) $row['sales_volume'] > (float) $sellerHighlights['volume']['sales_volume']) {
+        $sellerHighlights['volume'] = $row;
+    }
+    if ($sellerHighlights['count'] === null || (int) $row['sales_count'] > (int) $sellerHighlights['count']['sales_count']) {
+        $sellerHighlights['count'] = $row;
+    }
+    if ($sellerHighlights['ticket'] === null || (float) $row['avg_ticket'] > (float) $sellerHighlights['ticket']['avg_ticket']) {
+        $sellerHighlights['ticket'] = $row;
+    }
+    if ($sellerHighlights['biggest'] === null || (float) $row['biggest_sale'] > (float) $sellerHighlights['biggest']['biggest_sale']) {
+        $sellerHighlights['biggest'] = $row;
+    }
+}
+
 $dailyMap = [];
 foreach ($dailyRows as $row) {
     $dailyMap[$row['sale_date']] = [
@@ -77,6 +114,72 @@ for ($i = 29; $i >= 0; $i--) {
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Custo medio</p><p class="text-2xl font-bold"><?= money($totals['custo_medio']) ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Contas a receber</p><p class="text-2xl font-bold"><?= money($totals['receber']) ?></p></div>
     <div class="bg-white rounded-lg p-4 shadow"><p class="text-sm">Contas a pagar</p><p class="text-2xl font-bold"><?= money($totals['pagar']) ?></p></div>
+</div>
+
+<div class="mt-6 rounded-lg bg-white p-4 shadow">
+    <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+            <h3 class="text-lg font-semibold">Ranking de vendedores do mes</h3>
+            <p class="text-sm text-slate-500">Baseado nas vendas do mes atual registradas no PDV.</p>
+        </div>
+        <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Top <?= count($sellerRankingRows) ?></span>
+    </div>
+
+    <?php if (count($sellerRankingRows) === 0): ?>
+        <div class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+            Nenhuma venda encontrada no mes atual.
+        </div>
+    <?php else: ?>
+        <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Maior volume</p>
+                <p class="mt-1 text-lg font-bold text-slate-900"><?= htmlspecialchars((string) $sellerHighlights['volume']['seller_name']) ?></p>
+                <p class="text-sm text-slate-600"><?= money((float) $sellerHighlights['volume']['sales_volume']) ?></p>
+            </div>
+            <div class="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Mais vendas</p>
+                <p class="mt-1 text-lg font-bold text-slate-900"><?= htmlspecialchars((string) $sellerHighlights['count']['seller_name']) ?></p>
+                <p class="text-sm text-slate-600"><?= (int) $sellerHighlights['count']['sales_count'] ?> venda(s)</p>
+            </div>
+            <div class="rounded-lg border border-amber-100 bg-amber-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Maior ticket medio</p>
+                <p class="mt-1 text-lg font-bold text-slate-900"><?= htmlspecialchars((string) $sellerHighlights['ticket']['seller_name']) ?></p>
+                <p class="text-sm text-slate-600"><?= money((float) $sellerHighlights['ticket']['avg_ticket']) ?></p>
+            </div>
+            <div class="rounded-lg border border-fuchsia-100 bg-fuchsia-50 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Maior venda</p>
+                <p class="mt-1 text-lg font-bold text-slate-900"><?= htmlspecialchars((string) $sellerHighlights['biggest']['seller_name']) ?></p>
+                <p class="text-sm text-slate-600"><?= money((float) $sellerHighlights['biggest']['biggest_sale']) ?></p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                        <th class="p-3 text-left">#</th>
+                        <th class="p-3 text-left">Vendedor</th>
+                        <th class="p-3 text-right">Volume vendido</th>
+                        <th class="p-3 text-right">Qtd. vendas</th>
+                        <th class="p-3 text-right">Ticket medio</th>
+                        <th class="p-3 text-right">Maior venda</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    <?php foreach ($sellerRankingRows as $index => $seller): ?>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-slate-500"><?= $index + 1 ?></td>
+                            <td class="p-3 font-medium text-slate-900"><?= htmlspecialchars((string) $seller['seller_name']) ?></td>
+                            <td class="p-3 text-right font-semibold"><?= money((float) $seller['sales_volume']) ?></td>
+                            <td class="p-3 text-right"><?= (int) $seller['sales_count'] ?></td>
+                            <td class="p-3 text-right"><?= money((float) $seller['avg_ticket']) ?></td>
+                            <td class="p-3 text-right"><?= money((float) $seller['biggest_sale']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </div>
 
 <div class="bg-white rounded-lg p-4 shadow mt-6">
