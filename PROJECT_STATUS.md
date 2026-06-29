@@ -44,7 +44,7 @@ flowchart LR
 
 ### Mapa interativo de clientes no ERP
 
-**Estado:** implementado localmente, validacao com banco e deploy pendentes.
+**Estado:** implantado e validado em producao.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -64,8 +64,8 @@ e ficam em cache no banco para nao repetir consultas externas.
 - [x] Criar pagina `mapa` com Leaflet + OpenStreetMap, marcadores por cliente, popup com nome/endereco/vendas, filtro por UF, controle de escala e zoom.
 - [x] Registrar a pagina `mapa` no roteador `index.php` e no menu de navegacao.
 - [x] Validar sintaxe PHP (`php -l`) de todos os arquivos novos e alterados.
-- [ ] Validar renderizacao com banco e sincronizar localizacoes reais (bloqueado: MySQL local recusou conexao em `127.0.0.1:3306`).
-- [ ] Deploy em producao (aguardando pedido explicito do usuario).
+- [x] Validar renderizacao com banco e sincronizar localizacoes reais (validado em producao apos deploy).
+- [x] Deploy em producao (commit `433b8f2` aplicado por fast-forward na VPS).
 
 ## 3. Fases
 
@@ -254,7 +254,14 @@ e ficam em cache no banco para nao repetir consultas externas.
 - Registrada a pagina `mapa` em `index.php` (`$allowedPages`) e no menu de `includes/layout.php`.
 - `sql/schema.sql` atualizado com as colunas `geo_*` na tabela `customers`.
 - `php -l` aprovado em `includes/customer_geocode.php`, `actions/customer_geocode_sync.php`, `pages/mapa.php`, `index.php` e `includes/layout.php`.
-- Lacuna de validacao: MySQL local recusou conexao em `127.0.0.1:3306`, portanto a renderizacao com dados reais, a geocodificacao e a sincronizacao de localizacoes nao foram executadas localmente. Deploy nao realizado (aguardando pedido).
+- Lacuna local: MySQL local recusou conexao em `127.0.0.1:3306`, portanto render/geocode nao foram executados localmente; validacao feita diretamente em producao.
+- Deploy `433b8f2` aplicado por fast-forward na VPS (`c6aa4ce..433b8f2`, repo `/var/www/erp-netorodas`, chave `_v3`).
+- Producao: `php -l` aprovado nos 5 arquivos na VPS.
+- Producao: `GET /index.php?page=mapa` sem sessao retornou `302` para login com `return_to=mapa`; `GET ?page=login` retornou `200`.
+- Producao: login `admin` autenticado por curl; pagina `mapa` renderizou com 18 KB, titulo "Mapa de Clientes", div `customer-map`, Leaflet carregado e sem erro PHP, confirmando a migracao das colunas `geo_*` no banco real.
+- Producao: 6 colunas `geo_*` confirmadas em `customers`; estatistica inicial total=155, with_address=53, located=0, pending=53.
+- Producao: sincronizacao executada (`customerGeocodeSyncPending`, limite 60): 52 clientes localizados, 1 falhou, 1 remanescente. Precisao: 31 em nivel de rua, 21 em nivel de cidade.
+- Cliente id=139 falhou por dado: cidade "Feira da Santana" (correto "Feira de Santana"), rua abreviada "B VASCO 400" e sem CEP; corrigir no CRM e re-sincronizar.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -311,7 +318,7 @@ e ficam em cache no banco para nao repetir consultas externas.
 | 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
 | 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
 | 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
-| 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implementado localmente, validacao com banco e deploy pendentes | `php -l` aprovado nos 5 arquivos; MySQL local recusou conexao, sem render/geocode/deploy validados |
+| 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implantado e validado | Commit `433b8f2` por fast-forward na VPS; lint aprovado; `mapa` retornou `302` para login; render autenticado confirmou pagina e migracao `geo_*`; sync localizou 52 de 53 clientes (31 rua, 21 cidade) |
 
 ## 8. Regras de trabalho com o Codex
 
