@@ -13,6 +13,7 @@ $navigation = [
     ['page' => 'pdv', 'label' => 'PDV', 'href' => 'index.php?page=pdv'],
     ['page' => 'pdv_mobile', 'label' => 'PDV Mobile', 'href' => 'index.php?page=pdv_mobile'],
     ['page' => 'crm', 'label' => 'CRM', 'href' => 'index.php?page=crm'],
+    ['page' => 'mapa', 'label' => 'Mapa', 'href' => 'index.php?page=mapa'],
     ['page' => 'nfe_entrada', 'label' => 'NF-e Entrada', 'href' => 'index.php?page=nfe_entrada'],
     ['page' => 'financeiro', 'label' => 'Financeiro', 'href' => 'index.php?page=financeiro'],
 ];

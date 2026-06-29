@@ -79,6 +79,12 @@ CREATE TABLE IF NOT EXISTS customers (
     address_state CHAR(2) NULL,
     address_zip VARCHAR(10) NULL,
     address_country VARCHAR(60) NULL DEFAULT 'Brasil',
+    geo_latitude DECIMAL(10,7) NULL,
+    geo_longitude DECIMAL(10,7) NULL,
+    geo_precision VARCHAR(20) NULL,
+    geo_label VARCHAR(255) NULL,
+    geo_status VARCHAR(20) NULL,
+    geo_updated_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_customers_tax_id (tax_id),
     UNIQUE KEY uk_customers_external_auth_id (external_auth_id)

@@ -42,26 +42,30 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Painel financeiro interativo no Dashboard e Financeiro
+### Mapa interativo de clientes no ERP
 
-**Estado:** implantado e validado parcialmente.
+**Estado:** implementado localmente, validacao com banco e deploy pendentes.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Substituir a area financeira antiga por um painel analitico interativo que mostre
-faturamento, vendedores, lucro liquido estimado, custos por NF-e de entrada de
-fornecedores e insights praticos para decisao comercial.
+Criar uma pagina "Mapa" no ERP com um mapa real e interativo do Brasil (tiles do
+OpenStreetMap via Leaflet) que mostre onde moram os clientes. O posicionamento deve
+ser o mais real possivel, com referencia de ruas e cidades e escala/zoom ajustaveis
+para aproximar e ver onde o cliente mora. As coordenadas sao obtidas por
+geocodificacao de endereco (rua/numero via Nominatim, com fallback para CEP e cidade)
+e ficam em cache no banco para nao repetir consultas externas.
 
 ### Criterios objetivos de conclusao
 
-- [x] Criar grafico interativo com faturamento total, lucro liquido estimado e series por vendedor com toggle.
-- [x] Estimar custo dos produtos vendidos usando custo medio de NF-e recebidas quando houver match e fallback seguro para custo do estoque.
-- [x] Considerar salario semanal de Daniel, Felipe e Eriko em R$ 800,00 cada no lucro liquido estimado.
-- [x] Exibir indicadores de ticket medio, margem estimada, mix de pagamento e ranking de vendedores.
-- [x] Substituir a tela Financeiro pelo novo painel analitico.
-- [x] Registrar insights automatizados acionaveis para a empresa.
-- [x] Validar sintaxe PHP e deploy em producao.
+- [x] Adicionar colunas de geolocalizacao (`geo_*`) a tabela `customers` via ensure-schema e sincronizar `sql/schema.sql`.
+- [x] Implementar servico de geocodificacao via Nominatim (rua -> cidade) com enriquecimento por ViaCEP, limite de 1 req/seg e cache no banco.
+- [x] Criar action protegida para geocodificar clientes pendentes em lote.
+- [x] Criar pagina `mapa` com Leaflet + OpenStreetMap, marcadores por cliente, popup com nome/endereco/vendas, filtro por UF, controle de escala e zoom.
+- [x] Registrar a pagina `mapa` no roteador `index.php` e no menu de navegacao.
+- [x] Validar sintaxe PHP (`php -l`) de todos os arquivos novos e alterados.
+- [ ] Validar renderizacao com banco e sincronizar localizacoes reais (bloqueado: MySQL local recusou conexao em `127.0.0.1:3306`).
+- [ ] Deploy em producao (aguardando pedido explicito do usuario).
 
 ## 3. Fases
 
@@ -242,6 +246,16 @@ fornecedores e insights praticos para decisao comercial.
 - Deploy `ecf15bd` aplicado por fast-forward na VPS.
 - Producao: dashboard e financeiro preservaram redirecionamento `HTTP 302` sem sessao; validacao interna com banco retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK`.
 
+### Mapa interativo de clientes (2026-06-29)
+
+- Criado `includes/customer_geocode.php` com ensure-schema das colunas `geo_latitude`, `geo_longitude`, `geo_precision`, `geo_label`, `geo_status` e `geo_updated_at`, servico de geocodificacao via Nominatim (rua -> cidade), enriquecimento por ViaCEP, cache no banco e pausa de 1s entre chamadas.
+- Criada action protegida `actions/customer_geocode_sync.php` para geocodificar clientes pendentes em lote (`set_time_limit(180)`).
+- Criada pagina `pages/mapa.php` com Leaflet 1.9.4 + tiles do OpenStreetMap, marcadores `circleMarker` coloridos por precisao, popup com nome/endereco/telefone/carro/vendas, filtro por UF, controle de escala metrica e zoom.
+- Registrada a pagina `mapa` em `index.php` (`$allowedPages`) e no menu de `includes/layout.php`.
+- `sql/schema.sql` atualizado com as colunas `geo_*` na tabela `customers`.
+- `php -l` aprovado em `includes/customer_geocode.php`, `actions/customer_geocode_sync.php`, `pages/mapa.php`, `index.php` e `includes/layout.php`.
+- Lacuna de validacao: MySQL local recusou conexao em `127.0.0.1:3306`, portanto a renderizacao com dados reais, a geocodificacao e a sincronizacao de localizacoes nao foram executadas localmente. Deploy nao realizado (aguardando pedido).
+
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
 | Lucas Lima | R$ 800,00 | 1148 a 1153 | 5 | ERP reconhece apenas a 1153 como autorizada |
@@ -297,6 +311,7 @@ fornecedores e insights praticos para decisao comercial.
 | 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
 | 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
 | 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
+| 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implementado localmente, validacao com banco e deploy pendentes | `php -l` aprovado nos 5 arquivos; MySQL local recusou conexao, sem render/geocode/deploy validados |
 
 ## 8. Regras de trabalho com o Codex
 

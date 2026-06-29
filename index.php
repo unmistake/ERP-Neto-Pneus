@@ -7,7 +7,7 @@ require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/auth.php';
 
 $page = $_GET['page'] ?? 'dashboard';
-$allowedPages = ['dashboard', 'estoque', 'pdv', 'pdv_mobile', 'financeiro', 'crm', 'nfe_entrada', 'login'];
+$allowedPages = ['dashboard', 'estoque', 'pdv', 'pdv_mobile', 'financeiro', 'crm', 'mapa', 'nfe_entrada', 'login'];
 
 if (!in_array($page, $allowedPages, true)) {
     $page = 'dashboard';
