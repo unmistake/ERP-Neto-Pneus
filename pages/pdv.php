@@ -211,14 +211,17 @@ if (count($todaySales) > 0) {
                 <input name="customer_car" id="customer_car" placeholder="Carro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                 <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
                 <label class="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">
-                    <input type="checkbox" name="issue_nfe" value="1" class="h-4 w-4 rounded border-emerald-400 text-emerald-600">
+                    <input type="checkbox" name="issue_nfe" id="issue_nfe" value="1" class="h-4 w-4 rounded border-emerald-400 text-emerald-600">
                     NF-e
                 </label>
             </div>
 
             <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                 <div class="mb-3 flex items-center justify-between">
-                    <h4 class="font-bold text-slate-950">Endereco para NF-e</h4>
+                    <div>
+                        <h4 class="font-bold text-slate-950">Endereco do cliente</h4>
+                        <p class="text-xs text-slate-500">Opcional em venda comum. Obrigatorio quando NF-e estiver marcada.</p>
+                    </div>
                     <span class="text-xs font-semibold text-slate-500">ViaCEP ativo</span>
                 </div>
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -405,6 +408,7 @@ const phoneInput = document.getElementById('customer_phone');
 const taxIdInput = document.getElementById('customer_tax_id');
 const carInput = document.getElementById('customer_car');
 const notesInput = document.getElementById('customer_notes');
+const issueNfeInput = document.getElementById('issue_nfe');
 const addressStreetInput = document.getElementById('customer_address_street');
 const addressNumberInput = document.getElementById('customer_address_number');
 const addressDistrictInput = document.getElementById('customer_address_district');
@@ -420,6 +424,15 @@ const saleForm = document.querySelector('[data-sale-form]');
 const saleSubmitButton = document.querySelector('[data-sale-submit]');
 const itemsWrapper = document.getElementById('items');
 const saleTotalEl = document.getElementById('sale_total');
+const nfeRequiredAddressInputs = [
+    addressZipInput,
+    addressStreetInput,
+    addressNumberInput,
+    addressDistrictInput,
+    addressCityInput,
+    addressStateInput,
+    addressCountryInput,
+];
 
 document.querySelectorAll('[data-fiscal-issue-form]').forEach((form) => {
     form.addEventListener('submit', () => {
@@ -595,7 +608,20 @@ function selectCustomer(customer) {
     addressZipInput.value = customer.address_zip || '';
     addressCountryInput.value = customer.address_country || 'Brasil';
     customerSuggestions.classList.add('hidden');
+    updateNfeAddressRequirement();
 }
+
+function updateNfeAddressRequirement() {
+    const shouldRequireAddress = issueNfeInput.checked;
+    nfeRequiredAddressInputs.forEach((input) => {
+        input.required = shouldRequireAddress;
+        input.classList.toggle('border-emerald-400', shouldRequireAddress);
+        input.classList.toggle('bg-emerald-50', shouldRequireAddress);
+    });
+}
+
+issueNfeInput.addEventListener('change', updateNfeAddressRequirement);
+updateNfeAddressRequirement();
 
 function renderCustomerSuggestions(query) {
     const q = query.trim().toLowerCase();

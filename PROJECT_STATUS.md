@@ -42,26 +42,26 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Liberar PDV publico e melhorar UX das telas de venda
+### Tornar endereco sempre visivel no PDV com obrigatoriedade por NF-e
 
-**Estado:** implantado e validado parcialmente.
+**Estado:** implementado localmente; deploy pendente.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Permitir acesso ao PDV desktop e mobile sem login, ampliar a listagem do PDV para
-vendas das ultimas 72 horas e refinar o design das telas mantendo o tema visual
-do ERP.
+Exibir os campos de endereco do cliente sempre no PDV desktop e mobile, mantendo
+preenchimento opcional em venda comum e obrigatorio quando a emissao de NF-e for
+marcada.
 
 ### Criterios objetivos de conclusao
 
-- [x] Liberar acesso publico apenas para `pdv` e `pdv_mobile`, mantendo demais paginas protegidas.
-- [x] Listar no PDV vendas criadas nas ultimas 72 horas.
-- [x] Melhorar hierarquia visual, legibilidade e estados de acao do PDV desktop.
-- [x] Melhorar hierarquia visual, legibilidade e uso mobile do PDV mobile.
+- [x] Manter a secao de endereco sempre aberta no PDV mobile.
+- [x] Aplicar `required` dinamico nos campos de endereco quando `NF-e` estiver marcada.
+- [x] Validar no backend que vendas com NF-e nao sejam finalizadas sem endereco minimo.
+- [x] Preservar preenchimento opcional de endereco quando `NF-e` estiver desmarcada.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [x] Validar acesso sem login e renderizacao em producao apos deploy.
+- [ ] Validar fluxo funcional em producao apos deploy.
 
 ## 3. Fases
 
@@ -226,6 +226,11 @@ do ERP.
 - Deploy `7e4d253` aplicado por fast-forward na VPS.
 - Producao: `pdv` e `pdv_mobile` responderam `HTTP 200` sem login; `dashboard` preservou redirecionamento `HTTP 302` para login.
 - Producao: `php -l index.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php` aprovados na VPS.
+- Campos de endereco do PDV mobile deixaram de ficar ocultos e passaram a aparecer sempre.
+- PDV desktop e mobile agora aplicam `required` dinamico nos campos de endereco quando a caixa `NF-e` esta marcada.
+- Backend `actions/sale_finalize.php` bloqueia venda com NF-e sem endereco minimo e tenta reaproveitar endereco ja cadastrado do cliente antes de bloquear.
+- `php -l actions/sale_finalize.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php`: aprovados.
+- `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -280,6 +285,7 @@ do ERP.
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
 | 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
 | 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
+| 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implementado localmente, deploy pendente | `php -l` aprovado em `actions/sale_finalize.php`, `pages/pdv.php` e `pages/pdv_mobile.php`; validação funcional pendente |
 
 ## 8. Regras de trabalho com o Codex
 

@@ -76,7 +76,11 @@ $saleRequestToken = bin2hex(random_bytes(32));
                 <input type="checkbox" name="issue_nfe" id="issue_nfe" value="1" class="h-4 w-4">
                 <span>NF-e</span>
             </label>
-            <div id="nfe_address_fields" class="hidden md:col-span-2 grid grid-cols-1 gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+            <div id="nfe_address_fields" class="md:col-span-2 grid grid-cols-1 gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+                <div class="md:col-span-2">
+                    <p class="text-sm font-bold text-slate-900">Endereco do cliente</p>
+                    <p class="text-xs text-slate-500">Opcional em venda comum. Obrigatorio quando NF-e estiver marcada.</p>
+                </div>
                 <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                 <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                 <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
@@ -151,6 +155,15 @@ const itemsWrapper = document.getElementById('items');
 const saleTotalEl = document.getElementById('sale_total');
 const saleForm = document.querySelector('[data-sale-form]');
 const saleSubmitButton = document.querySelector('[data-sale-submit]');
+const nfeRequiredAddressInputs = [
+    addressZipInput,
+    addressStreetInput,
+    addressNumberInput,
+    addressDistrictInput,
+    addressCityInput,
+    addressStateInput,
+    addressCountryInput,
+];
 
 saleForm.addEventListener('submit', (event) => {
     if (saleForm.dataset.submitting === '1') {
@@ -327,12 +340,19 @@ function selectCustomer(customer) {
     customerSuggestions.classList.add('hidden');
 }
 
-function toggleNfeAddressFields() {
-    nfeAddressFields.classList.toggle('hidden', !issueNfeInput.checked);
+function updateNfeAddressRequirement() {
+    const shouldRequireAddress = issueNfeInput.checked;
+    nfeRequiredAddressInputs.forEach((input) => {
+        input.required = shouldRequireAddress;
+        input.classList.toggle('border-emerald-400', shouldRequireAddress);
+        input.classList.toggle('bg-emerald-50', shouldRequireAddress);
+    });
+    nfeAddressFields.classList.toggle('ring-2', shouldRequireAddress);
+    nfeAddressFields.classList.toggle('ring-emerald-200', shouldRequireAddress);
 }
 
-issueNfeInput.addEventListener('change', toggleNfeAddressFields);
-toggleNfeAddressFields();
+issueNfeInput.addEventListener('change', updateNfeAddressRequirement);
+updateNfeAddressRequirement();
 
 function renderCustomerSuggestions(query) {
     const q = query.trim().toLowerCase();

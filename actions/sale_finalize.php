@@ -91,6 +91,57 @@ if (!in_array($sellerName, $allowedSellers, true)) {
     redirect(saleReturnPath($returnPage));
 }
 
+if ($issueNfe && $customerId > 0) {
+    $addressFallbackStmt = $pdo->prepare(
+        'SELECT address_street, address_number, address_district, address_city, address_state, address_zip, address_country
+         FROM customers
+         WHERE id = ?
+         LIMIT 1'
+    );
+    $addressFallbackStmt->execute([$customerId]);
+    $addressFallback = $addressFallbackStmt->fetch();
+
+    if ($addressFallback) {
+        $customerAddressStreet = $customerAddressStreet !== '' ? $customerAddressStreet : (string) ($addressFallback['address_street'] ?? '');
+        $customerAddressNumber = $customerAddressNumber !== '' ? $customerAddressNumber : (string) ($addressFallback['address_number'] ?? '');
+        $customerAddressDistrict = $customerAddressDistrict !== '' ? $customerAddressDistrict : (string) ($addressFallback['address_district'] ?? '');
+        $customerAddressCity = $customerAddressCity !== '' ? $customerAddressCity : (string) ($addressFallback['address_city'] ?? '');
+        $customerAddressState = $customerAddressState !== '' ? $customerAddressState : strtoupper(substr((string) ($addressFallback['address_state'] ?? ''), 0, 2));
+        $customerAddressZip = $customerAddressZip !== '' ? $customerAddressZip : (string) ($addressFallback['address_zip'] ?? '');
+        $customerAddressCountry = $customerAddressCountry !== '' ? $customerAddressCountry : (string) ($addressFallback['address_country'] ?? 'Brasil');
+    }
+}
+
+if ($issueNfe) {
+    $missingAddressFields = [];
+    if ($customerAddressZip === '') {
+        $missingAddressFields[] = 'CEP';
+    }
+    if ($customerAddressStreet === '') {
+        $missingAddressFields[] = 'logradouro';
+    }
+    if ($customerAddressNumber === '') {
+        $missingAddressFields[] = 'numero';
+    }
+    if ($customerAddressDistrict === '') {
+        $missingAddressFields[] = 'bairro';
+    }
+    if ($customerAddressCity === '') {
+        $missingAddressFields[] = 'cidade';
+    }
+    if ($customerAddressState === '') {
+        $missingAddressFields[] = 'UF';
+    }
+    if ($customerAddressCountry === '') {
+        $missingAddressFields[] = 'pais';
+    }
+
+    if (count($missingAddressFields) > 0) {
+        flash('error', 'Para emitir NF-e, preencha o endereco do cliente: ' . implode(', ', $missingAddressFields) . '.');
+        redirect(saleReturnPath($returnPage));
+    }
+}
+
 if (!preg_match('/^[a-f0-9]{64}$/', $requestToken)) {
     flash('error', 'A sessao da venda expirou. Recarregue o PDV e tente novamente.');
     redirect(saleReturnPath($returnPage));
