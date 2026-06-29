@@ -44,7 +44,7 @@ flowchart LR
 
 ### Painel financeiro interativo no Dashboard e Financeiro
 
-**Estado:** em andamento.
+**Estado:** implantado e validado parcialmente.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -55,13 +55,13 @@ fornecedores e insights praticos para decisao comercial.
 
 ### Criterios objetivos de conclusao
 
-- [ ] Criar grafico interativo com faturamento total, lucro liquido estimado e series por vendedor com toggle.
-- [ ] Estimar custo dos produtos vendidos usando custo medio de NF-e recebidas quando houver match e fallback seguro para custo do estoque.
-- [ ] Considerar salario semanal de Daniel, Felipe e Eriko em R$ 800,00 cada no lucro liquido estimado.
-- [ ] Exibir indicadores de ticket medio, margem estimada, mix de pagamento e ranking de vendedores.
-- [ ] Substituir a tela Financeiro pelo novo painel analitico.
-- [ ] Registrar insights automatizados acionaveis para a empresa.
-- [ ] Validar sintaxe PHP e deploy em producao.
+- [x] Criar grafico interativo com faturamento total, lucro liquido estimado e series por vendedor com toggle.
+- [x] Estimar custo dos produtos vendidos usando custo medio de NF-e recebidas quando houver match e fallback seguro para custo do estoque.
+- [x] Considerar salario semanal de Daniel, Felipe e Eriko em R$ 800,00 cada no lucro liquido estimado.
+- [x] Exibir indicadores de ticket medio, margem estimada, mix de pagamento e ranking de vendedores.
+- [x] Substituir a tela Financeiro pelo novo painel analitico.
+- [x] Registrar insights automatizados acionaveis para a empresa.
+- [x] Validar sintaxe PHP e deploy em producao.
 
 ## 3. Fases
 
@@ -234,6 +234,13 @@ fornecedores e insights praticos para decisao comercial.
 - Deploy `fbfd05d` aplicado por fast-forward na VPS.
 - Producao: `pdv` e `pdv_mobile` responderam `HTTP 200` sem login; `dashboard` preservou redirecionamento `HTTP 302` para login.
 - Producao: `pdv_mobile` contem `Endereco do cliente` e `Opcional em venda comum`, confirmando a secao de endereco visivel.
+- Painel financeiro interativo implementado com grafico Chart.js contendo faturamento total, CMV estimado, lucro liquido e series por vendedor com toggle.
+- Estimativa de CMV usa match por NF-e recebidas de fornecedores, fallback para `products.cost_price` e fallback final para media geral de NF-e.
+- Lucro liquido passou a considerar folha de Daniel, Felipe e Eriko em R$ 800,00 por semana cada.
+- Tela `financeiro` substituida pelo mesmo painel analitico do Dashboard.
+- `php -l includes/financial_dashboard.php`, `php -l pages/dashboard.php` e `php -l pages/financeiro.php`: aprovados localmente e na VPS.
+- Deploy `ecf15bd` aplicado por fast-forward na VPS.
+- Producao: dashboard e financeiro preservaram redirecionamento `HTTP 302` sem sessao; validacao interna com banco retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK`.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -289,6 +296,7 @@ fornecedores e insights praticos para decisao comercial.
 | 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
 | 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
 | 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
+| 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
 
 ## 8. Regras de trabalho com o Codex
 
