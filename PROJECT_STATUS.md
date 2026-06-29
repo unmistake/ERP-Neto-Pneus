@@ -288,6 +288,7 @@ o ERP apenas modela o valor correto.
 - Producao: PDV publico renderizou com o construtor de pagamentos ("Como o cliente pagou", inputs `payments[method]`, JS de troca) e sem erro PHP.
 - Producao: tabela `sale_payments` criada com colunas id, sale_id, method (enum dinheiro/pix/cartao/prazo/troca), amount, note, created_at.
 - Producao: financeiro renderizou autenticado sem erro PHP com o novo mix via `financialPaymentMix`.
+- Deploy `87e8cf9` levou o construtor ao PDV mobile do vendedor. Producao: `pdv_mobile` renderizou com o construtor e inputs `payments[method]`; o link de venda `vendas/index.php` ficou sem construtor e manteve o `select` unico `payment_method`; ambos sem erro PHP.
 - Pendente: finalizacao real de uma venda mista e uma com troca nao foi executada para nao poluir dados de producao; validar em uso operacional ou teste controlado.
 - Ressalva fiscal pendente: tratamento de troca/permuta na NF-e a confirmar com o contador.
 
@@ -348,6 +349,7 @@ o ERP apenas modela o valor correto.
 | 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
 | 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implantado e validado | Commit `433b8f2` por fast-forward na VPS; lint aprovado; `mapa` retornou `302` para login; render autenticado confirmou pagina e migracao `geo_*`; sync localizou 52 de 53 clientes (31 rua, 21 cidade) |
 | 2026-06-29 | Pagamentos multiplos e venda com troca no PDV | Implantado e validado parcialmente | Commit `b43aba3` por fast-forward na VPS; lint aprovado; PDV renderizou com construtor de pagamentos; `sale_payments` criada; financeiro ok com novo mix; finalizacao real pendente de uso operacional |
+| 2026-06-29 | Construtor de pagamentos no PDV mobile do vendedor | Implantado e validado parcialmente | Commit `87e8cf9` por fast-forward na VPS; lint aprovado; `pdv_mobile` renderizou com construtor; link de venda do cliente preservou pagamento unico; sem erro PHP; finalizacao real pendente |
 
 ## 8. Regras de trabalho com o Codex
 
