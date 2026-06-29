@@ -59,10 +59,11 @@ usuario: pagamento em mercadoria, nao desconto). Os itens recebidos na troca
 entram no estoque como produto usado (custo = valor da troca), permitindo revenda
 e CMV correto.
 
-Escopo desta entrega: PDV desktop. O PDV mobile e o fluxo de link de venda
-continuam funcionando com pagamento unico (compatibilidade retroativa em
-`sale_finalize.php`). Ressalva fiscal: o tratamento de troca/permuta na NF-e deve
-ser confirmado com o contador; o ERP apenas modela o valor correto.
+Escopo: PDV desktop e PDV mobile do vendedor. O fluxo de link de venda do cliente
+(`pdv_mobile_link`) mantem o pagamento unico (autosserviço nao configura
+troca/divisao), com compatibilidade retroativa em `sale_finalize.php`. Ressalva
+fiscal: o tratamento de troca/permuta na NF-e deve ser confirmado com o contador;
+o ERP apenas modela o valor correto.
 
 ### Criterios objetivos de conclusao
 
@@ -71,6 +72,7 @@ ser confirmado com o contador; o ERP apenas modela o valor correto.
 - [x] Registrar linha de pagamento `troca` e dar entrada do item recebido no estoque como produto usado, com movimento de estoque.
 - [x] Derivar status de pagamento e contas a receber a partir das linhas `prazo`.
 - [x] Atualizar o PDV desktop com construtor de pagamentos (meio + valor + campos de troca) e indicador ao vivo de pago/falta/troco.
+- [x] Portar o construtor de pagamentos para o PDV mobile do vendedor, preservando pagamento unico no link de venda do cliente.
 - [x] Atualizar o mix de pagamento do painel financeiro para somar `sale_payments`, com fallback para vendas antigas.
 - [x] Validar sintaxe PHP (`php -l`) de todos os arquivos alterados.
 - [x] Deploy em producao (commit `b43aba3` aplicado por fast-forward na VPS).
