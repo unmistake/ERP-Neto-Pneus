@@ -44,7 +44,7 @@ flowchart LR
 
 ### Pagamentos multiplos e venda com troca no PDV
 
-**Estado:** implementado localmente, validacao com banco e deploy pendentes.
+**Estado:** implantado em producao; render e schema validados; finalizacao real pendente de uso operacional.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -73,8 +73,9 @@ ser confirmado com o contador; o ERP apenas modela o valor correto.
 - [x] Atualizar o PDV desktop com construtor de pagamentos (meio + valor + campos de troca) e indicador ao vivo de pago/falta/troco.
 - [x] Atualizar o mix de pagamento do painel financeiro para somar `sale_payments`, com fallback para vendas antigas.
 - [x] Validar sintaxe PHP (`php -l`) de todos os arquivos alterados.
-- [ ] Validar com banco (render do PDV, finalizacao com pagamento misto e com troca, mix do financeiro) — bloqueado: MySQL local recusou conexao em `127.0.0.1:3306`.
-- [ ] Deploy em producao (aguardando pedido explicito do usuario).
+- [x] Deploy em producao (commit `b43aba3` aplicado por fast-forward na VPS).
+- [x] Validar em producao render do PDV (construtor de pagamentos), criacao da tabela `sale_payments` e render do financeiro com o novo mix.
+- [ ] Validar finalizacao real (uma venda com pagamento misto e uma com troca) durante uso operacional ou teste controlado — nao executado para nao poluir dados de producao.
 
 ## 3. Fases
 
@@ -281,7 +282,11 @@ ser confirmado com o contador; o ERP apenas modela o valor correto.
 - PDV desktop (`pages/pdv.php`): seletor unico substituido por construtor de pagamentos (meio + valor, campos de troca condicionais) com indicador ao vivo de Total/Pago/Falta/Troco, botao "= restante" e validacao no submit.
 - Painel financeiro (`includes/financial_dashboard.php`): mix de pagamento agora soma `sale_payments` por meio, com fallback para `payment_method` em vendas antigas (helper `financialPaymentMix`).
 - `php -l` aprovado em `includes/sale_schema.php`, `actions/sale_finalize.php`, `pages/pdv.php` e `includes/financial_dashboard.php`.
-- Lacuna: MySQL local recusou conexao, entao finalizacao real (pagamento misto e troca), render do PDV e mix do financeiro nao foram validados localmente. Deploy nao realizado (aguardando pedido).
+- Deploy `b43aba3` aplicado por fast-forward na VPS (`44a8fa7..b43aba3`); `php -l` aprovado nos 4 arquivos na VPS.
+- Producao: PDV publico renderizou com o construtor de pagamentos ("Como o cliente pagou", inputs `payments[method]`, JS de troca) e sem erro PHP.
+- Producao: tabela `sale_payments` criada com colunas id, sale_id, method (enum dinheiro/pix/cartao/prazo/troca), amount, note, created_at.
+- Producao: financeiro renderizou autenticado sem erro PHP com o novo mix via `financialPaymentMix`.
+- Pendente: finalizacao real de uma venda mista e uma com troca nao foi executada para nao poluir dados de producao; validar em uso operacional ou teste controlado.
 - Ressalva fiscal pendente: tratamento de troca/permuta na NF-e a confirmar com o contador.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
@@ -340,7 +345,7 @@ ser confirmado com o contador; o ERP apenas modela o valor correto.
 | 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
 | 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
 | 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implantado e validado | Commit `433b8f2` por fast-forward na VPS; lint aprovado; `mapa` retornou `302` para login; render autenticado confirmou pagina e migracao `geo_*`; sync localizou 52 de 53 clientes (31 rua, 21 cidade) |
-| 2026-06-29 | Pagamentos multiplos e venda com troca no PDV | Implementado localmente, validacao com banco e deploy pendentes | `sale_payments` + finalize multi-pagamento/troca + construtor no PDV desktop + mix do financeiro; `php -l` aprovado nos 4 arquivos; MySQL local indisponivel, sem teste com banco |
+| 2026-06-29 | Pagamentos multiplos e venda com troca no PDV | Implantado e validado parcialmente | Commit `b43aba3` por fast-forward na VPS; lint aprovado; PDV renderizou com construtor de pagamentos; `sale_payments` criada; financeiro ok com novo mix; finalizacao real pendente de uso operacional |
 
 ## 8. Regras de trabalho com o Codex
 
