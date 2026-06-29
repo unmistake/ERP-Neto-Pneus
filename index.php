@@ -20,7 +20,8 @@ if ($page === 'login') {
     exit;
 }
 
-if ($page !== 'pdv_mobile') {
+$publicPages = ['pdv', 'pdv_mobile'];
+if (!in_array($page, $publicPages, true)) {
     authRequireLogin($_SERVER['REQUEST_URI'] ?? 'index.php');
 }
 

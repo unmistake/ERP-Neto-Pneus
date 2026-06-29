@@ -43,74 +43,85 @@ $sellers = ['Elias', 'Daniel', 'Felipe', 'Eriko'];
 $saleRequestToken = bin2hex(random_bytes(32));
 ?>
 
-<div class="max-w-4xl mx-auto">
-    <div class="mb-4">
-        <h2 class="text-2xl font-bold">PDV Mobile</h2>
-        <p class="text-sm text-slate-600">Tela responsiva para vendedores registrarem vendas rapidamente.</p>
+<div class="mx-auto max-w-4xl">
+    <div class="mb-5 overflow-hidden rounded-3xl bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/10">
+        <p class="text-xs font-black uppercase tracking-[0.24em] text-emerald-300">PDV Mobile</p>
+        <h2 class="mt-2 text-3xl font-black tracking-tight">Venda em campo</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-300">Tela publica e responsiva para vendedores registrarem vendas rapidamente pelo celular.</p>
     </div>
 
-    <form method="post" action="<?= htmlspecialchars($pdvFormAction) ?>" data-sale-form class="bg-white rounded-xl shadow p-4 md:p-6">
+    <form method="post" action="<?= htmlspecialchars($pdvFormAction) ?>" data-sale-form class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70">
         <input type="hidden" name="return_page" value="<?= htmlspecialchars($pdvReturnPage) ?>">
         <input type="hidden" name="request_token" value="<?= htmlspecialchars($saleRequestToken) ?>">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div class="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 p-4">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Nova venda</p>
+            <h3 class="text-xl font-black text-slate-950">Cliente, itens e pagamento</h3>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
             <div class="md:col-span-2 relative">
                 <input type="hidden" name="customer_id" id="customer_id">
-                <input id="customer_search" autocomplete="off" placeholder="Buscar cliente por nome, telefone ou CPF/CNPJ" class="w-full border rounded px-3 py-3">
-                <div id="customer_suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
+                <input id="customer_search" autocomplete="off" placeholder="Buscar cliente por nome, telefone ou CPF/CNPJ" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100">
+                <div id="customer_suggestions" class="hidden absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl"></div>
             </div>
-            <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="border rounded px-3 py-3">
-            <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="border rounded px-3 py-3">
-            <input type="text" inputmode="email" name="customer_email" id="customer_email" placeholder="E-mail (opcional)" class="border rounded px-3 py-3 md:col-span-2">
-            <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="border rounded px-3 py-3">
-            <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-3">
-            <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-3">
-            <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="border rounded px-3 py-3">
-            <label class="md:col-span-2 flex items-center gap-2 border rounded px-3 py-3 bg-slate-50">
+            <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input type="text" inputmode="email" name="customer_email" id="customer_email" placeholder="E-mail (opcional)" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
+            <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input name="customer_car" id="customer_car" placeholder="Carro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <label class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">
                 <input type="checkbox" name="issue_nfe" id="issue_nfe" value="1" class="h-4 w-4">
-                <span class="font-medium">NF-e</span>
+                <span>NF-e</span>
             </label>
-            <div id="nfe_address_fields" class="hidden md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 border rounded p-3 bg-slate-50">
-                <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="border rounded px-3 py-3">
-                <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="border rounded px-3 py-3">
-                <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="border rounded px-3 py-3">
-                <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="border rounded px-3 py-3">
-                <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="border rounded px-3 py-3 uppercase">
-                <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="border rounded px-3 py-3">
-                <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="border rounded px-3 py-3 md:col-span-2">
+            <div id="nfe_address_fields" class="hidden md:col-span-2 grid grid-cols-1 gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+                <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm uppercase outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
             </div>
-            <select required name="seller_name" class="border rounded px-3 py-3 md:col-span-2">
+            <select required name="seller_name" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
                 <option value="">Selecione o vendedor</option>
                 <?php foreach ($sellers as $seller): ?>
                     <option value="<?= htmlspecialchars($seller) ?>"><?= htmlspecialchars($seller) ?></option>
                 <?php endforeach; ?>
             </select>
-            <select name="payment_method" class="border rounded px-3 py-3">
+            <select name="payment_method" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                 <option value="dinheiro">Dinheiro</option>
                 <option value="pix">PIX</option>
                 <option value="cartao">Cartao</option>
                 <option value="prazo">A prazo</option>
             </select>
-            <select name="payment_status" class="border rounded px-3 py-3">
+            <select name="payment_status" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                 <option value="paid">Pago</option>
                 <option value="pending">Pendente</option>
             </select>
-            <input type="date" name="due_date" class="border rounded px-3 py-3 md:col-span-2">
+            <input type="date" name="due_date" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
         </div>
 
-        <div class="flex items-center justify-between mb-2">
-            <h3 class="font-semibold">Itens da venda</h3>
-            <button type="button" onclick="addItem()" class="bg-slate-200 rounded px-3 py-2 text-sm">+ Item</button>
+        <div class="mx-4 mb-2 flex items-center justify-between rounded-2xl bg-slate-950 p-3 text-white">
+            <div>
+                <p class="text-xs font-bold uppercase tracking-wide text-emerald-300">Itens</p>
+                <h3 class="font-black">Produtos da venda</h3>
+            </div>
+            <button type="button" onclick="addItem()" class="rounded-full bg-white px-3 py-2 text-sm font-bold text-slate-950">+ Item</button>
         </div>
 
-        <div id="items" class="space-y-3"></div>
+        <div id="items" class="space-y-3 px-4"></div>
 
-        <div class="mt-4 p-3 rounded bg-slate-100 flex items-center justify-between">
+        <div class="mx-4 mt-4 flex items-center justify-between rounded-2xl bg-slate-100 p-4">
             <span class="text-sm text-slate-600">Total da venda</span>
             <span id="sale_total" class="text-xl font-bold">R$ 0,00</span>
         </div>
 
-        <button data-sale-submit class="mt-4 w-full bg-emerald-600 text-white rounded px-4 py-3 font-semibold disabled:cursor-not-allowed disabled:bg-emerald-400">Finalizar venda</button>
+        <div class="p-4">
+            <button data-sale-submit class="w-full rounded-2xl bg-emerald-500 px-4 py-4 font-black text-slate-950 shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300">Finalizar venda</button>
+        </div>
     </form>
 </div>
 

@@ -42,24 +42,26 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Adicionar ranking de vendedores ao dashboard
+### Liberar PDV publico e melhorar UX das telas de venda
 
-**Estado:** implantado e validado parcialmente.
-**Prioridade:** media.
+**Estado:** implementado localmente; deploy pendente.
+**Prioridade:** alta.
 
 ### Objetivo
 
-Exibir no dashboard um ranking mensal de vendedores com volume vendido, quantidade
-de vendas, ticket medio e maior venda individual.
+Permitir acesso ao PDV desktop e mobile sem login, ampliar a listagem do PDV para
+vendas das ultimas 72 horas e refinar o design das telas mantendo o tema visual
+do ERP.
 
 ### Criterios objetivos de conclusao
 
-- [x] Agregar vendas do mes atual por vendedor usando `sales.seller_name`.
-- [x] Exibir maiores destaques: volume vendido, quantidade de vendas, ticket medio e maior venda.
-- [x] Renderizar ranking responsivo no dashboard sem alterar o fluxo de PDV.
-- [x] Validar sintaxe PHP do dashboard.
+- [x] Liberar acesso publico apenas para `pdv` e `pdv_mobile`, mantendo demais paginas protegidas.
+- [x] Listar no PDV vendas criadas nas ultimas 72 horas.
+- [x] Melhorar hierarquia visual, legibilidade e estados de acao do PDV desktop.
+- [x] Melhorar hierarquia visual, legibilidade e uso mobile do PDV mobile.
+- [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [x] Validar dashboard em producao apos deploy.
+- [ ] Validar acesso sem login e renderizacao em producao apos deploy.
 
 ## 3. Fases
 
@@ -215,6 +217,12 @@ de vendas, ticket medio e maior venda individual.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
 - Deploy `60e1cf4` aplicado por fast-forward na VPS.
 - Producao: `php -l pages/dashboard.php` aprovado na VPS apos deploy.
+- PDV desktop e PDV mobile configurados localmente como paginas publicas; demais paginas continuam exigindo login pelo roteador.
+- PDV desktop ajustado para listar vendas das ultimas 72 horas e exibir total/volume recente.
+- Design do PDV desktop e mobile refinado com cards, hierarquia visual, botoes em pill, estados de foco e total da venda ao vivo.
+- `php -l index.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php`: aprovados.
+- `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
+- Validacao HTTP local nao executada: Apache local recusou conexao em `localhost`.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -268,6 +276,7 @@ de vendas, ticket medio e maior venda individual.
 | 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
 | 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
+| 2026-06-29 | PDV publico e redesign das telas de venda | Implementado localmente, deploy pendente | `php -l` aprovado em `index.php`, `pages/pdv.php` e `pages/pdv_mobile.php`; HTTP local bloqueado por Apache indisponivel |
 
 ## 8. Regras de trabalho com o Codex
 

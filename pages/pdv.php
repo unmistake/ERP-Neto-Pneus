@@ -111,9 +111,16 @@ $todaySales = $pdo->query(
               AND fd.status IN ('autorizado', 'processando', 'pendente')
         ) AS has_active_nfe_document
      FROM sales s
-     ORDER BY s.id DESC
-     LIMIT 10"
+     WHERE s.created_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
+     ORDER BY s.id DESC"
 )->fetchAll();
+
+$recentSalesCount = count($todaySales);
+$recentSalesTotal = array_reduce(
+    $todaySales,
+    static fn (float $carry, array $sale): float => $carry + (float) $sale['total_amount'],
+    0.0
+);
 
 if (count($todaySales) > 0) {
     $saleIds = array_map(static fn ($sale) => (int) $sale['id'], $todaySales);
@@ -155,148 +162,233 @@ if (count($todaySales) > 0) {
 }
 ?>
 
-<h2 class="text-2xl font-bold mb-4">PDV Rapido</h2>
-
-<form method="post" action="actions/sale_finalize.php" data-sale-form class="bg-white rounded-lg shadow p-4 mb-6">
-    <input type="hidden" name="request_token" value="<?= htmlspecialchars($saleRequestToken) ?>">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <div class="relative">
-            <input type="hidden" name="customer_id" id="customer_id">
-            <input id="customer_search" autocomplete="off" placeholder="Buscar cliente cadastrado" class="w-full border rounded px-3 py-2">
-            <div id="customer_suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
+<section class="mb-6 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl shadow-slate-950/10">
+    <div class="grid gap-5 p-5 md:grid-cols-[1.5fr_1fr] md:p-7">
+        <div>
+            <p class="text-xs font-black uppercase tracking-[0.28em] text-emerald-300">PDV operacional</p>
+            <h2 class="mt-2 text-3xl font-black tracking-tight md:text-4xl">Venda rapida, sem atrito</h2>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Registre vendas, clientes, itens e NF-e em uma tela unica. A lista abaixo agora mostra tudo que foi vendido nas ultimas 72 horas.</p>
         </div>
-        <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="border rounded px-3 py-2">
-        <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="border rounded px-3 py-2">
-        <input type="text" inputmode="email" name="customer_email" id="customer_email" placeholder="E-mail (opcional)" class="border rounded px-3 py-2">
-        <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="border rounded px-3 py-2">
-        <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="border rounded px-3 py-2">
-        <input name="customer_car" id="customer_car" placeholder="Carro" class="border rounded px-3 py-2">
-        <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="border rounded px-3 py-2">
-        <label class="flex items-center gap-2 border rounded px-3 py-2 bg-slate-50">
-            <input type="checkbox" name="issue_nfe" value="1" class="h-4 w-4">
-            <span class="font-medium">NF-e</span>
-        </label>
-        <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="border rounded px-3 py-2">
-        <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="border rounded px-3 py-2">
-        <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="border rounded px-3 py-2">
-        <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="border rounded px-3 py-2">
-        <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="border rounded px-3 py-2 uppercase">
-        <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="border rounded px-3 py-2">
-        <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="border rounded px-3 py-2">
-        <select required name="seller_name" class="border rounded px-3 py-2">
-            <option value="">Selecione o vendedor</option>
-            <?php foreach ($sellers as $seller): ?>
-                <option value="<?= htmlspecialchars($seller) ?>"><?= htmlspecialchars($seller) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select name="payment_method" class="border rounded px-3 py-2">
-            <option value="dinheiro">Dinheiro</option>
-            <option value="pix">PIX</option>
-            <option value="cartao">Cartao</option>
-            <option value="prazo">A prazo</option>
-        </select>
-        <select name="payment_status" class="border rounded px-3 py-2">
-            <option value="paid">Pago</option>
-            <option value="pending">Pendente</option>
-        </select>
-        <input type="date" name="due_date" class="border rounded px-3 py-2">
+        <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+                <p class="text-xs uppercase tracking-wide text-slate-400">Vendas 72h</p>
+                <p class="mt-1 text-3xl font-black"><?= $recentSalesCount ?></p>
+            </div>
+            <div class="rounded-2xl bg-emerald-400 p-4 text-slate-950">
+                <p class="text-xs font-bold uppercase tracking-wide">Volume 72h</p>
+                <p class="mt-1 text-2xl font-black"><?= money($recentSalesTotal) ?></p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<form method="post" action="actions/sale_finalize.php" data-sale-form class="mb-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70">
+    <input type="hidden" name="request_token" value="<?= htmlspecialchars($saleRequestToken) ?>">
+
+    <div class="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 p-5">
+        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+                <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Nova venda</p>
+                <h3 class="text-xl font-black text-slate-950">Dados do cliente e pagamento</h3>
+            </div>
+            <span class="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">Vendedor obrigatorio</span>
+        </div>
     </div>
 
-    <div id="items" class="space-y-2"></div>
-    <button type="button" onclick="addItem()" class="mb-4 bg-slate-200 rounded px-3 py-2 text-sm">+ Adicionar item</button>
+    <div class="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div class="relative md:col-span-3">
+                    <input type="hidden" name="customer_id" id="customer_id">
+                    <input id="customer_search" autocomplete="off" placeholder="Buscar cliente por nome, telefone ou CPF/CNPJ" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-100">
+                    <div id="customer_suggestions" class="hidden absolute z-20 mt-2 w-full max-h-56 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl"></div>
+                </div>
+                <input name="customer_first_name" id="customer_first_name" placeholder="Nome" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_last_name" id="customer_last_name" placeholder="Sobrenome" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input type="text" inputmode="email" name="customer_email" id="customer_email" placeholder="E-mail (opcional)" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_phone" id="customer_phone" placeholder="Telefone (xx xxxxx-xxxx)" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_tax_id" id="customer_tax_id" placeholder="CPF/CNPJ" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_car" id="customer_car" placeholder="Carro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <input name="customer_notes" id="customer_notes" placeholder="Observacoes" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
+                <label class="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">
+                    <input type="checkbox" name="issue_nfe" value="1" class="h-4 w-4 rounded border-emerald-400 text-emerald-600">
+                    NF-e
+                </label>
+            </div>
 
-    <button data-sale-submit class="w-full bg-emerald-600 text-white rounded px-4 py-2 disabled:cursor-not-allowed disabled:bg-emerald-400">Finalizar venda</button>
+            <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <div class="mb-3 flex items-center justify-between">
+                    <h4 class="font-bold text-slate-950">Endereco para NF-e</h4>
+                    <span class="text-xs font-semibold text-slate-500">ViaCEP ativo</span>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <input name="customer_address_zip" id="customer_address_zip" placeholder="CEP" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <input name="customer_address_street" id="customer_address_street" placeholder="Logradouro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
+                    <input name="customer_address_number" id="customer_address_number" placeholder="Numero" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <input name="customer_address_district" id="customer_address_district" placeholder="Bairro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <input name="customer_address_city" id="customer_address_city" placeholder="Cidade" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <input name="customer_address_state" id="customer_address_state" maxlength="2" placeholder="UF" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm uppercase outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <input name="customer_address_country" id="customer_address_country" placeholder="Pais" value="Brasil" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2">
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <select required name="seller_name" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 sm:col-span-2">
+                    <option value="">Selecione o vendedor</option>
+                    <?php foreach ($sellers as $seller): ?>
+                        <option value="<?= htmlspecialchars($seller) ?>"><?= htmlspecialchars($seller) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select name="payment_method" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">PIX</option>
+                    <option value="cartao">Cartao</option>
+                    <option value="prazo">A prazo</option>
+                </select>
+                <select name="payment_status" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <option value="paid">Pago</option>
+                    <option value="pending">Pendente</option>
+                </select>
+                <input type="date" name="due_date" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 sm:col-span-2">
+            </div>
+
+            <div class="rounded-3xl border border-slate-200 bg-slate-950 p-4 text-white">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">Itens</p>
+                        <h4 class="text-lg font-black">Produtos da venda</h4>
+                    </div>
+                    <button type="button" onclick="addItem()" class="rounded-full bg-white px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-emerald-200">+ Item</button>
+                </div>
+                <div id="items" class="space-y-3"></div>
+                <div class="mt-4 flex items-center justify-between rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+                    <span class="text-sm text-slate-300">Total da venda</span>
+                    <span id="sale_total" class="text-2xl font-black">R$ 0,00</span>
+                </div>
+            </div>
+
+            <button data-sale-submit class="w-full rounded-2xl bg-emerald-500 px-5 py-4 text-base font-black text-slate-950 shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300">Finalizar venda</button>
+        </div>
+    </div>
 </form>
 
-<div class="bg-white rounded-lg shadow overflow-auto">
-    <h3 class="font-semibold p-4">Ultimas vendas</h3>
-    <table class="w-full text-sm">
-        <thead class="bg-slate-200">
-            <tr>
-                <th class="p-3 text-left">Data</th>
-                <th class="p-3 text-left">Cliente</th>
-                <th class="p-3 text-left">Vendedor</th>
-                <th class="p-3 text-left">Total</th>
-                <th class="p-3 text-left">Status</th>
-                <th class="p-3 text-left">Fiscal</th>
-                <th class="p-3 text-left">Acoes</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($todaySales as $sale): ?>
-                <?php
-                    $hasNfeDocument = (bool) ($sale['has_nfe_document'] ?? false);
-                    $hasActiveNfeDocument = (bool) ($sale['has_active_nfe_document'] ?? false);
-                    $fiscalStatus = (string) ($sale['fiscal_status'] ?? 'not_requested');
-                    $isNfeSale = ($sale['fiscal_document_type'] ?? 'none') === 'nfe' || $hasNfeDocument;
-                    $canIssueNfe = !$hasActiveNfeDocument && $fiscalStatus !== 'issued';
-                ?>
-                <tr class="border-t">
-                    <td class="p-3"><?= htmlspecialchars($sale['created_at']) ?></td>
-                    <td class="p-3"><?= htmlspecialchars($sale['customer_name'] ?: 'Consumidor final') ?></td>
-                    <td class="p-3"><?= htmlspecialchars((string) ($sale['seller_name'] ?? '-')) ?></td>
-                    <td class="p-3"><?= money((float) $sale['total_amount']) ?></td>
-                    <td class="p-3"><?= $sale['payment_status'] === 'paid' ? 'Pago' : 'Pendente' ?></td>
-                    <td class="p-3">
-                        <?php if ($isNfeSale): ?>
-                            <span class="inline-block px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">NF-e</span>
-                            <div class="text-xs text-slate-600 mt-1"><?= htmlspecialchars($fiscalStatus) ?></div>
-                        <?php else: ?>
-                            <span class="inline-block px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold">Sem NF-e</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="p-3">
-                        <button type="button" class="text-blue-700 underline mr-3" onclick="showSaleDetails(<?= (int) $sale['id'] ?>)">Detalhes</button>
-                        <?php if ($canIssueNfe): ?>
-                            <form method="post" action="actions/fiscal_issue.php" class="inline" data-fiscal-issue-form>
-                                <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
-                                <input type="hidden" name="return_page" value="pdv">
-                                <button type="submit" class="text-emerald-700 underline mr-3 disabled:cursor-not-allowed disabled:text-slate-400">Emitir NF-e</button>
-                            </form>
-                        <?php endif; ?>
-                        <?php if ($hasNfeDocument): ?>
-                            <form method="post" action="actions/fiscal_sync.php" class="inline">
-                                <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
-                                <input type="hidden" name="return_page" value="pdv">
-                                <button type="submit" class="text-sky-700 underline mr-3">Sincronizar NF-e</button>
-                            </form>
-                            <a href="actions/fiscal_download_pdf.php?sale_id=<?= (int) $sale['id'] ?>" class="text-slate-700 underline mr-3">PDF NF-e</a>
-                            <?php if ($fiscalStatus === 'issued'): ?>
-                                <form method="post" action="actions/fiscal_cancel.php" class="inline" onsubmit="return confirm('Confirmar cancelamento da NF-e desta venda? Esta acao sera enviada para a SEFAZ.');">
-                                    <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
-                                    <input type="hidden" name="return_page" value="pdv">
-                                    <input type="text" name="justification" minlength="15" maxlength="255" required value="Cancelamento por erro nos valores de quantidade e preco unitario." class="border rounded px-2 py-1 text-xs w-80 mr-2">
-                                    <button type="submit" class="text-orange-700 underline mr-3">Cancelar NF-e</button>
-                                </form>
-                            <?php endif; ?>
-                        <?php endif; ?>
-                        <form method="post" action="actions/sale_delete.php" class="inline" onsubmit="return confirm('Tem certeza que deseja excluir esta venda?');">
-                            <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
-                            <button type="submit" class="text-rose-700 underline">Excluir</button>
-                        </form>
-                    </td>
+<div class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70">
+    <div class="flex flex-col gap-2 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Historico recente</p>
+            <h3 class="text-xl font-black text-slate-950">Vendas das ultimas 72 horas</h3>
+        </div>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600"><?= $recentSalesCount ?> registro(s)</span>
+    </div>
+    <div class="overflow-auto">
+        <table class="w-full min-w-[980px] text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="p-4 text-left">Data</th>
+                    <th class="p-4 text-left">Cliente</th>
+                    <th class="p-4 text-left">Vendedor</th>
+                    <th class="p-4 text-right">Total</th>
+                    <th class="p-4 text-left">Status</th>
+                    <th class="p-4 text-left">Fiscal</th>
+                    <th class="p-4 text-left">Acoes</th>
                 </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                <?php if (count($todaySales) === 0): ?>
+                    <tr>
+                        <td colspan="7" class="p-8 text-center text-slate-500">Nenhuma venda registrada nas ultimas 72 horas.</td>
+                    </tr>
+                <?php endif; ?>
+                <?php foreach ($todaySales as $sale): ?>
+                    <?php
+                        $hasNfeDocument = (bool) ($sale['has_nfe_document'] ?? false);
+                        $hasActiveNfeDocument = (bool) ($sale['has_active_nfe_document'] ?? false);
+                        $fiscalStatus = (string) ($sale['fiscal_status'] ?? 'not_requested');
+                        $isNfeSale = ($sale['fiscal_document_type'] ?? 'none') === 'nfe' || $hasNfeDocument;
+                        $canIssueNfe = !$hasActiveNfeDocument && $fiscalStatus !== 'issued';
+                    ?>
+                    <tr class="align-top transition hover:bg-slate-50">
+                        <td class="p-4 whitespace-nowrap text-slate-600"><?= htmlspecialchars(date('d/m H:i', strtotime((string) $sale['created_at']))) ?></td>
+                        <td class="p-4 font-semibold text-slate-950"><?= htmlspecialchars($sale['customer_name'] ?: 'Consumidor final') ?></td>
+                        <td class="p-4"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700"><?= htmlspecialchars((string) ($sale['seller_name'] ?? '-')) ?></span></td>
+                        <td class="p-4 text-right font-black text-slate-950"><?= money((float) $sale['total_amount']) ?></td>
+                        <td class="p-4">
+                            <?php if ($sale['payment_status'] === 'paid'): ?>
+                                <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">Pago</span>
+                            <?php else: ?>
+                                <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Pendente</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="p-4">
+                            <?php if ($isNfeSale): ?>
+                                <span class="inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">NF-e</span>
+                                <div class="mt-1 text-xs text-slate-500"><?= htmlspecialchars($fiscalStatus) ?></div>
+                            <?php else: ?>
+                                <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Sem NF-e</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="p-4">
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100" onclick="showSaleDetails(<?= (int) $sale['id'] ?>)">Detalhes</button>
+                                <?php if ($canIssueNfe): ?>
+                                    <form method="post" action="actions/fiscal_issue.php" class="inline" data-fiscal-issue-form>
+                                        <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                        <input type="hidden" name="return_page" value="pdv">
+                                        <button type="submit" class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:text-slate-400">Emitir NF-e</button>
+                                    </form>
+                                <?php endif; ?>
+                                <?php if ($hasNfeDocument): ?>
+                                    <form method="post" action="actions/fiscal_sync.php" class="inline">
+                                        <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                        <input type="hidden" name="return_page" value="pdv">
+                                        <button type="submit" class="rounded-full bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 transition hover:bg-sky-100">Sincronizar</button>
+                                    </form>
+                                    <a href="actions/fiscal_download_pdf.php?sale_id=<?= (int) $sale['id'] ?>" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-200">PDF</a>
+                                    <?php if ($fiscalStatus === 'issued'): ?>
+                                        <form method="post" action="actions/fiscal_cancel.php" class="flex flex-wrap gap-2" onsubmit="return confirm('Confirmar cancelamento da NF-e desta venda? Esta acao sera enviada para a SEFAZ.');">
+                                            <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                            <input type="hidden" name="return_page" value="pdv">
+                                            <input type="text" name="justification" minlength="15" maxlength="255" required value="Cancelamento por erro nos valores de quantidade e preco unitario." class="w-72 rounded-full border border-slate-200 px-3 py-1.5 text-xs">
+                                            <button type="submit" class="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-100">Cancelar</button>
+                                        </form>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                <form method="post" action="actions/sale_delete.php" class="inline" onsubmit="return confirm('Tem certeza que deseja excluir esta venda?');">
+                                    <input type="hidden" name="sale_id" value="<?= (int) $sale['id'] ?>">
+                                    <button type="submit" class="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100">Excluir</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<div id="sale-details-panel" class="bg-white rounded-lg shadow overflow-auto mt-6 hidden">
-    <h3 id="sale-details-title" class="font-semibold p-4"></h3>
-    <div id="sale-details-meta" class="px-4 pb-2 text-sm text-slate-700"></div>
-    <table class="w-full text-sm">
-        <thead class="bg-slate-200">
-            <tr>
-                <th class="p-3 text-left">Produto</th>
-                <th class="p-3 text-left">Marca</th>
-                <th class="p-3 text-left">Modelo</th>
-                <th class="p-3 text-left">Quantidade</th>
-                <th class="p-3 text-left">Preco unitario</th>
-                <th class="p-3 text-left">Total item</th>
-            </tr>
-        </thead>
-        <tbody id="sale-details-items"></tbody>
-    </table>
+<div id="sale-details-panel" class="mt-6 hidden overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70">
+    <div class="border-b border-slate-100 p-5">
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Conferencia</p>
+        <h3 id="sale-details-title" class="text-xl font-black text-slate-950"></h3>
+        <div id="sale-details-meta" class="mt-2 flex flex-wrap gap-2 text-sm text-slate-600"></div>
+    </div>
+    <div class="overflow-auto">
+        <table class="w-full min-w-[760px] text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="p-4 text-left">Produto</th>
+                    <th class="p-4 text-left">Marca</th>
+                    <th class="p-4 text-left">Modelo</th>
+                    <th class="p-4 text-right">Quantidade</th>
+                    <th class="p-4 text-right">Preco unitario</th>
+                    <th class="p-4 text-right">Total item</th>
+                </tr>
+            </thead>
+            <tbody id="sale-details-items" class="divide-y divide-slate-100"></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
@@ -326,6 +418,8 @@ const saleDetailsMeta = document.getElementById('sale-details-meta');
 const saleDetailsItems = document.getElementById('sale-details-items');
 const saleForm = document.querySelector('[data-sale-form]');
 const saleSubmitButton = document.querySelector('[data-sale-submit]');
+const itemsWrapper = document.getElementById('items');
+const saleTotalEl = document.getElementById('sale_total');
 
 document.querySelectorAll('[data-fiscal-issue-form]').forEach((form) => {
     form.addEventListener('submit', () => {
@@ -358,26 +452,45 @@ function escapeHtml(value) {
     }[char]));
 }
 
+function recalcTotal() {
+    const rows = itemsWrapper.querySelectorAll('[data-item-row]');
+    let total = 0;
+    rows.forEach((row) => {
+        const qty = Number(row.querySelector('input[name="items[quantity][]"]').value || 0);
+        const unit = Number(row.querySelector('input[name="items[unit_price][]"]').value || 0);
+        if (qty > 0 && unit >= 0) {
+            total += qty * unit;
+        }
+    });
+    saleTotalEl.textContent = brMoney(total);
+}
+
 function addItem() {
     const wrapper = document.createElement('div');
-    wrapper.className = 'grid grid-cols-1 md:grid-cols-4 gap-2';
+    wrapper.setAttribute('data-item-row', '1');
+    wrapper.className = 'rounded-2xl bg-white p-3 text-slate-900';
 
     wrapper.innerHTML = `
-        <div class="relative md:col-span-2">
-            <input type="hidden" name="items[product_id][]">
-            <input type="hidden" name="items[product_name][]">
-            <input type="text" data-role="product-search" autocomplete="off" placeholder="Buscar produto ou digitar novo produto" class="w-full border rounded px-3 py-2">
-            <div data-role="product-suggestions" class="hidden absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border rounded shadow"></div>
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <div class="relative md:col-span-2">
+                <input type="hidden" name="items[product_id][]">
+                <input type="hidden" name="items[product_name][]">
+                <input type="text" data-role="product-search" autocomplete="off" placeholder="Buscar produto ou digitar novo produto" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <div data-role="product-suggestions" class="hidden absolute z-20 mt-2 w-full max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl"></div>
+            </div>
+            <input required min="1" type="number" name="items[quantity][]" placeholder="Qtd" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+            <input required min="0" step="0.01" type="number" name="items[unit_price][]" placeholder="Preco unitario" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
         </div>
-        <input required min="1" type="number" name="items[quantity][]" placeholder="Qtd" class="border rounded px-3 py-2">
-        <input required min="0" step="0.01" type="number" name="items[unit_price][]" placeholder="Preco unitario" class="border rounded px-3 py-2">
-        <button type="button" class="bg-rose-500 text-white rounded px-2">Remover</button>
+        <div class="mt-2 text-right">
+            <button type="button" class="text-xs font-bold text-rose-700 underline">Remover item</button>
+        </div>
     `;
 
     const productIdInput = wrapper.querySelector('input[name="items[product_id][]"]');
     const productNameInput = wrapper.querySelector('input[name="items[product_name][]"]');
     const productSearch = wrapper.querySelector('input[data-role="product-search"]');
     const productSuggestions = wrapper.querySelector('div[data-role="product-suggestions"]');
+    const qtyInput = wrapper.querySelector('input[name="items[quantity][]"]');
     const unitInput = wrapper.querySelector('input[name="items[unit_price][]"]');
     const removeBtn = wrapper.querySelector('button');
 
@@ -394,7 +507,7 @@ function addItem() {
         ).slice(0, 10);
 
         const rows = filtered.map((p) => `
-            <button type="button" data-id="${p.id}" class="w-full text-left px-3 py-2 hover:bg-slate-100 border-b last:border-b-0">
+            <button type="button" data-id="${p.id}" class="w-full border-b px-3 py-2 text-left hover:bg-slate-100 last:border-b-0">
                 <div class="font-medium">${escapeHtml(p.name)}</div>
                 <div class="text-xs text-slate-500">Est: ${p.stock_qty} | R$ ${Number(p.price).toFixed(2)}</div>
             </button>
@@ -402,7 +515,7 @@ function addItem() {
 
         if (!filtered.some((p) => (p.name || '').toLowerCase() === q)) {
             rows.push(`
-                <button type="button" data-new-product="1" class="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800">
+                <button type="button" data-new-product="1" class="w-full px-3 py-2 text-left text-emerald-800 hover:bg-emerald-50">
                     <div class="font-medium">Cadastrar novo: ${escapeHtml(query.trim())}</div>
                     <div class="text-xs">Sera criado automaticamente ao finalizar a venda</div>
                 </button>
@@ -410,7 +523,6 @@ function addItem() {
         }
 
         productSuggestions.innerHTML = rows.join('');
-
         productSuggestions.classList.remove('hidden');
 
         productSuggestions.querySelectorAll('button[data-id]').forEach((btn) => {
@@ -425,6 +537,7 @@ function addItem() {
                     unitInput.value = Number(product.price).toFixed(2);
                 }
                 productSuggestions.classList.add('hidden');
+                recalcTotal();
             });
         });
 
@@ -435,6 +548,7 @@ function addItem() {
                 productNameInput.value = query.trim();
                 productSearch.value = query.trim();
                 productSuggestions.classList.add('hidden');
+                recalcTotal();
             });
         }
     }
@@ -446,12 +560,18 @@ function addItem() {
     });
     productSearch.addEventListener('focus', () => renderProductSuggestions(productSearch.value));
     productSearch.addEventListener('blur', () => setTimeout(() => productSuggestions.classList.add('hidden'), 150));
-    removeBtn.addEventListener('click', () => wrapper.remove());
+    qtyInput.addEventListener('input', recalcTotal);
+    unitInput.addEventListener('input', recalcTotal);
+    removeBtn.addEventListener('click', () => {
+        wrapper.remove();
+        recalcTotal();
+    });
 
-    document.getElementById('items').appendChild(wrapper);
+    itemsWrapper.appendChild(wrapper);
 }
 
 addItem();
+recalcTotal();
 
 function clearCustomerSelection() {
     customerIdInput.value = '';
