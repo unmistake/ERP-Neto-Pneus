@@ -44,7 +44,7 @@ flowchart LR
 
 ### Liberar PDV publico e melhorar UX das telas de venda
 
-**Estado:** implementado localmente; deploy pendente.
+**Estado:** implantado e validado parcialmente.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -61,7 +61,7 @@ do ERP.
 - [x] Melhorar hierarquia visual, legibilidade e uso mobile do PDV mobile.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar acesso sem login e renderizacao em producao apos deploy.
+- [x] Validar acesso sem login e renderizacao em producao apos deploy.
 
 ## 3. Fases
 
@@ -223,6 +223,9 @@ do ERP.
 - `php -l index.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php`: aprovados.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
 - Validacao HTTP local nao executada: Apache local recusou conexao em `localhost`.
+- Deploy `7e4d253` aplicado por fast-forward na VPS.
+- Producao: `pdv` e `pdv_mobile` responderam `HTTP 200` sem login; `dashboard` preservou redirecionamento `HTTP 302` para login.
+- Producao: `php -l index.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php` aprovados na VPS.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -276,7 +279,7 @@ do ERP.
 | 2026-06-25 | Tela de NF-e de entrada via Focus | Implantado e validado parcialmente | Commit `961f34f`; rota respondeu `HTTP 200`, tabelas criadas e lint aprovado na VPS |
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
 | 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
-| 2026-06-29 | PDV publico e redesign das telas de venda | Implementado localmente, deploy pendente | `php -l` aprovado em `index.php`, `pages/pdv.php` e `pages/pdv_mobile.php`; HTTP local bloqueado por Apache indisponivel |
+| 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
 
 ## 8. Regras de trabalho com o Codex
 
