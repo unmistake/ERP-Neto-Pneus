@@ -44,7 +44,7 @@ flowchart LR
 
 ### Tornar endereco sempre visivel no PDV com obrigatoriedade por NF-e
 
-**Estado:** implementado localmente; deploy pendente.
+**Estado:** implantado e validado parcialmente.
 **Prioridade:** alta.
 
 ### Objetivo
@@ -61,7 +61,7 @@ marcada.
 - [x] Preservar preenchimento opcional de endereco quando `NF-e` estiver desmarcada.
 - [x] Validar sintaxe PHP dos arquivos alterados.
 - [x] Registrar evidencias e lacunas de validacao.
-- [ ] Validar fluxo funcional em producao apos deploy.
+- [x] Validar fluxo funcional em producao apos deploy.
 
 ## 3. Fases
 
@@ -231,6 +231,9 @@ marcada.
 - Backend `actions/sale_finalize.php` bloqueia venda com NF-e sem endereco minimo e tenta reaproveitar endereco ja cadastrado do cliente antes de bloquear.
 - `php -l actions/sale_finalize.php`, `php -l pages/pdv.php` e `php -l pages/pdv_mobile.php`: aprovados.
 - `git diff --check`: aprovado; avisos restantes sao apenas normalizacao LF/CRLF.
+- Deploy `fbfd05d` aplicado por fast-forward na VPS.
+- Producao: `pdv` e `pdv_mobile` responderam `HTTP 200` sem login; `dashboard` preservou redirecionamento `HTTP 302` para login.
+- Producao: `pdv_mobile` contem `Endereco do cliente` e `Opcional em venda comum`, confirmando a secao de endereco visivel.
 
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
@@ -285,7 +288,7 @@ marcada.
 | 2026-06-25 | Login administrativo do ERP | Implantado e validado parcialmente | Commit `ba54467`; dashboard redirecionou para login, `admin` criado e `pdv_mobile` permaneceu publico |
 | 2026-06-25 | Ranking mensal de vendedores no dashboard | Implantado e validado parcialmente | Commit `60e1cf4`; `php -l pages/dashboard.php` aprovado localmente e na VPS |
 | 2026-06-29 | PDV publico e redesign das telas de venda | Implantado e validado parcialmente | Commit `7e4d253`; PDV e PDV mobile responderam `HTTP 200` sem login, dashboard preservou `HTTP 302` para login |
-| 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implementado localmente, deploy pendente | `php -l` aprovado em `actions/sale_finalize.php`, `pages/pdv.php` e `pages/pdv_mobile.php`; validação funcional pendente |
+| 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
 
 ## 8. Regras de trabalho com o Codex
 
