@@ -42,26 +42,26 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Tornar endereco sempre visivel no PDV com obrigatoriedade por NF-e
+### Painel financeiro interativo no Dashboard e Financeiro
 
-**Estado:** implantado e validado parcialmente.
+**Estado:** em andamento.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Exibir os campos de endereco do cliente sempre no PDV desktop e mobile, mantendo
-preenchimento opcional em venda comum e obrigatorio quando a emissao de NF-e for
-marcada.
+Substituir a area financeira antiga por um painel analitico interativo que mostre
+faturamento, vendedores, lucro liquido estimado, custos por NF-e de entrada de
+fornecedores e insights praticos para decisao comercial.
 
 ### Criterios objetivos de conclusao
 
-- [x] Manter a secao de endereco sempre aberta no PDV mobile.
-- [x] Aplicar `required` dinamico nos campos de endereco quando `NF-e` estiver marcada.
-- [x] Validar no backend que vendas com NF-e nao sejam finalizadas sem endereco minimo.
-- [x] Preservar preenchimento opcional de endereco quando `NF-e` estiver desmarcada.
-- [x] Validar sintaxe PHP dos arquivos alterados.
-- [x] Registrar evidencias e lacunas de validacao.
-- [x] Validar fluxo funcional em producao apos deploy.
+- [ ] Criar grafico interativo com faturamento total, lucro liquido estimado e series por vendedor com toggle.
+- [ ] Estimar custo dos produtos vendidos usando custo medio de NF-e recebidas quando houver match e fallback seguro para custo do estoque.
+- [ ] Considerar salario semanal de Daniel, Felipe e Eriko em R$ 800,00 cada no lucro liquido estimado.
+- [ ] Exibir indicadores de ticket medio, margem estimada, mix de pagamento e ranking de vendedores.
+- [ ] Substituir a tela Financeiro pelo novo painel analitico.
+- [ ] Registrar insights automatizados acionaveis para a empresa.
+- [ ] Validar sintaxe PHP e deploy em producao.
 
 ## 3. Fases
 
