@@ -186,6 +186,62 @@ if ($totalAmount <= 0 || count($items) === 0) {
     redirect(saleReturnPath($returnPage));
 }
 
+// --- Linhas de pagamento (pagamento multiplo e troca) ---
+// O PDV desktop envia payments[method][], payments[amount][] e, para troca,
+// payments[troca_desc][] e payments[troca_qty][]. O PDV mobile e o link de venda
+// continuam enviando o pagamento unico antigo (payment_method/payment_status).
+$allowedPaymentMethods = ['dinheiro', 'pix', 'cartao', 'prazo', 'troca'];
+$paymentMethodsIn = $_POST['payments']['method'] ?? [];
+$paymentAmountsIn = $_POST['payments']['amount'] ?? [];
+$trocaDescIn = $_POST['payments']['troca_desc'] ?? [];
+$trocaQtyIn = $_POST['payments']['troca_qty'] ?? [];
+
+$paymentLines = [];
+if (is_array($paymentMethodsIn) && count($paymentMethodsIn) > 0) {
+    for ($i = 0; $i < count($paymentMethodsIn); $i++) {
+        $method = (string) ($paymentMethodsIn[$i] ?? '');
+        $amount = round((float) ($paymentAmountsIn[$i] ?? 0), 2);
+        if (!in_array($method, $allowedPaymentMethods, true) || $amount <= 0) {
+            continue;
+        }
+        $paymentLines[] = [
+            'method' => $method,
+            'amount' => $amount,
+            'troca_desc' => trim((string) ($trocaDescIn[$i] ?? '')),
+            'troca_qty' => max(1, (int) ($trocaQtyIn[$i] ?? 1)),
+        ];
+    }
+}
+
+if (count($paymentLines) > 0) {
+    $paidSum = array_sum(array_column($paymentLines, 'amount'));
+    if (abs($paidSum - $totalAmount) > 0.01) {
+        flash('error', 'Os pagamentos somam ' . money($paidSum) . ', mas o total da venda e ' . money($totalAmount) . '. Ajuste os valores.');
+        redirect(saleReturnPath($returnPage));
+    }
+
+    $prazoTotal = 0.0;
+    $methodsPresent = [];
+    foreach ($paymentLines as $line) {
+        if ($line['method'] === 'prazo') {
+            $prazoTotal += $line['amount'];
+        }
+        $methodsPresent[$line['method']] = true;
+    }
+    $paymentStatus = $prazoTotal > 0.009 ? 'pending' : 'paid';
+    $paymentMethod = substr(implode('+', array_keys($methodsPresent)), 0, 30);
+} else {
+    // Compatibilidade: sintetiza uma unica linha a partir do pagamento antigo.
+    $singleMethod = in_array($paymentMethod, $allowedPaymentMethods, true) ? $paymentMethod : 'dinheiro';
+    $paymentLines[] = [
+        'method' => $singleMethod,
+        'amount' => round($totalAmount, 2),
+        'troca_desc' => '',
+        'troca_qty' => 1,
+    ];
+    $prazoTotal = ($paymentStatus === 'pending') ? $totalAmount : 0.0;
+}
+
 try {
     $pdo->beginTransaction();
 
@@ -339,10 +395,32 @@ try {
         $movementStmt->execute([$item['product_id'], $item['quantity'], 'Venda #' . $saleId]);
     }
 
-    if ($paymentStatus === 'pending') {
+    // Linhas de pagamento; itens recebidos em troca entram no estoque como usados.
+    $insertPaymentStmt = $pdo->prepare('INSERT INTO sale_payments (sale_id, method, amount, note) VALUES (?, ?, ?, ?)');
+    $createUsedProductStmt = $pdo->prepare("INSERT INTO products (name, item_condition, cost_price, sale_price, stock_qty) VALUES (?, 'usado', ?, 0, ?)");
+
+    foreach ($paymentLines as $line) {
+        $note = null;
+        if ($line['method'] === 'troca') {
+            $desc = $line['troca_desc'];
+            if ($desc !== '') {
+                $qty = $line['troca_qty'];
+                $unitCost = $qty > 0 ? round($line['amount'] / $qty, 2) : $line['amount'];
+                $createUsedProductStmt->execute([$desc . ' (usado - troca venda #' . $saleId . ')', $unitCost, $qty]);
+                $tradeProductId = (int) $pdo->lastInsertId();
+                $initialMovementStmt->execute([$tradeProductId, $qty, 'Entrada por troca na venda #' . $saleId]);
+                $note = $desc . ' (qtd ' . $qty . ')';
+            } else {
+                $note = 'Troca';
+            }
+        }
+        $insertPaymentStmt->execute([$saleId, $line['method'], $line['amount'], $note]);
+    }
+
+    if ($prazoTotal > 0.009) {
         $desc = 'Venda #' . $saleId . ' - ' . ($customerName ?: 'Consumidor final');
         $recStmt = $pdo->prepare("INSERT INTO accounts_receivable (description, amount, due_date, status, sale_id) VALUES (?, ?, ?, 'pending', ?)");
-        $recStmt->execute([$desc, $totalAmount, $dueDate, $saleId]);
+        $recStmt->execute([$desc, $prazoTotal, $dueDate, $saleId]);
     }
 
     $pdo->commit();

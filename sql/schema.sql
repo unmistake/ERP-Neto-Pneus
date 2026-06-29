@@ -117,6 +117,17 @@ CREATE TABLE IF NOT EXISTS sale_items (
     CONSTRAINT fk_item_product FOREIGN KEY (product_id) REFERENCES products(id)
 );
 
+CREATE TABLE IF NOT EXISTS sale_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_id INT NOT NULL,
+    method ENUM('dinheiro','pix','cartao','prazo','troca') NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    note VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_sale_payments_sale (sale_id),
+    CONSTRAINT fk_sale_payments_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS accounts_payable (
     id INT AUTO_INCREMENT PRIMARY KEY,
     description VARCHAR(160) NOT NULL,

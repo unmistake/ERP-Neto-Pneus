@@ -30,4 +30,26 @@ function ensureSaleFiscalSchema(PDO $pdo): void
     } else {
         $pdo->exec("ALTER TABLE sales MODIFY fiscal_status ENUM('not_requested','pending','issued','failed','cancelled') NOT NULL DEFAULT 'not_requested'");
     }
+
+    ensureSalePaymentSchema($pdo);
+}
+
+/**
+ * Linhas de pagamento de uma venda. Uma venda pode ser quitada por varios meios
+ * (ex.: pix + dinheiro) e a troca e um meio de pagamento em mercadoria.
+ */
+function ensureSalePaymentSchema(PDO $pdo): void
+{
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS sale_payments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sale_id INT NOT NULL,
+            method ENUM('dinheiro','pix','cartao','prazo','troca') NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            note VARCHAR(255) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_sale_payments_sale (sale_id),
+            CONSTRAINT fk_sale_payments_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
+        )"
+    );
 }

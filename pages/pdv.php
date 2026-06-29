@@ -237,24 +237,43 @@ if (count($todaySales) > 0) {
         </div>
 
         <div class="space-y-4">
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <select required name="seller_name" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 sm:col-span-2">
+            <div class="grid grid-cols-1 gap-3">
+                <select required name="seller_name" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
                     <option value="">Selecione o vendedor</option>
                     <?php foreach ($sellers as $seller): ?>
                         <option value="<?= htmlspecialchars($seller) ?>"><?= htmlspecialchars($seller) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select name="payment_method" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="pix">PIX</option>
-                    <option value="cartao">Cartao</option>
-                    <option value="prazo">A prazo</option>
-                </select>
-                <select name="payment_status" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    <option value="paid">Pago</option>
-                    <option value="pending">Pendente</option>
-                </select>
-                <input type="date" name="due_date" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 sm:col-span-2">
+            </div>
+
+            <div class="rounded-3xl border border-slate-200 bg-white p-4">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Pagamento</p>
+                        <h4 class="text-lg font-black text-slate-900">Como o cliente pagou</h4>
+                    </div>
+                    <button type="button" onclick="addPayment()" class="rounded-full bg-slate-950 px-3 py-2 text-sm font-bold text-white transition hover:bg-slate-800">+ Pagamento</button>
+                </div>
+                <p class="mb-3 text-xs text-slate-500">Pode dividir em varios meios (ex.: pix + dinheiro). Para troca, escolha <strong>Troca</strong> e descreva o item recebido: ele entra no estoque como usado.</p>
+                <div id="payments" class="space-y-3"></div>
+                <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+                    <div class="rounded-2xl bg-slate-100 p-2">
+                        <p class="text-[11px] font-semibold uppercase text-slate-500">Total</p>
+                        <p id="pay_total" class="text-sm font-black text-slate-900">R$ 0,00</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-100 p-2">
+                        <p class="text-[11px] font-semibold uppercase text-slate-500">Pago</p>
+                        <p id="pay_paid" class="text-sm font-black text-slate-900">R$ 0,00</p>
+                    </div>
+                    <div id="pay_diff_box" class="rounded-2xl bg-amber-100 p-2">
+                        <p id="pay_diff_label" class="text-[11px] font-semibold uppercase text-amber-700">Falta</p>
+                        <p id="pay_diff" class="text-sm font-black text-amber-800">R$ 0,00</p>
+                    </div>
+                </div>
+                <label class="mt-3 block">
+                    <span class="text-xs font-semibold text-slate-500">Vencimento (parte a prazo)</span>
+                    <input type="date" name="due_date" class="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                </label>
             </div>
 
             <div class="rounded-3xl border border-slate-200 bg-slate-950 p-4 text-white">
@@ -450,6 +469,20 @@ saleForm.addEventListener('submit', (event) => {
         return;
     }
 
+    const paidRows = paymentsWrapper.querySelectorAll('[data-payment-row]');
+    if (paidRows.length === 0) {
+        event.preventDefault();
+        alert('Adicione ao menos uma forma de pagamento.');
+        return;
+    }
+
+    const paid = paymentsPaidSum();
+    if (Math.abs(paid - currentSaleTotal) > 0.01) {
+        event.preventDefault();
+        alert('Os pagamentos (' + brMoney(paid) + ') nao fecham com o total da venda (' + brMoney(currentSaleTotal) + '). Ajuste os valores.');
+        return;
+    }
+
     saleForm.dataset.submitting = '1';
     saleSubmitButton.disabled = true;
     saleSubmitButton.textContent = 'Finalizando venda...';
@@ -465,6 +498,7 @@ function escapeHtml(value) {
     }[char]));
 }
 
+let currentSaleTotal = 0;
 function recalcTotal() {
     const rows = itemsWrapper.querySelectorAll('[data-item-row]');
     let total = 0;
@@ -475,7 +509,9 @@ function recalcTotal() {
             total += qty * unit;
         }
     });
+    currentSaleTotal = total;
     saleTotalEl.textContent = brMoney(total);
+    recalcPayments();
 }
 
 function addItem() {
@@ -583,7 +619,112 @@ function addItem() {
     itemsWrapper.appendChild(wrapper);
 }
 
+const paymentsWrapper = document.getElementById('payments');
+const payTotalEl = document.getElementById('pay_total');
+const payPaidEl = document.getElementById('pay_paid');
+const payDiffEl = document.getElementById('pay_diff');
+const payDiffLabel = document.getElementById('pay_diff_label');
+const payDiffBox = document.getElementById('pay_diff_box');
+const paymentMethodOptions = [
+    ['dinheiro', 'Dinheiro'],
+    ['pix', 'PIX'],
+    ['cartao', 'Cartao'],
+    ['prazo', 'A prazo'],
+    ['troca', 'Troca (mercadoria)'],
+];
+
+function paymentsPaidSum() {
+    let sum = 0;
+    paymentsWrapper.querySelectorAll('input[name="payments[amount][]"]').forEach((input) => {
+        sum += Number(input.value || 0);
+    });
+    return sum;
+}
+
+function recalcPayments() {
+    const paid = paymentsPaidSum();
+    const diff = Math.round((currentSaleTotal - paid) * 100) / 100;
+    payTotalEl.textContent = brMoney(currentSaleTotal);
+    payPaidEl.textContent = brMoney(paid);
+
+    if (Math.abs(diff) < 0.005) {
+        payDiffLabel.textContent = 'Fechado';
+        payDiffEl.textContent = 'OK';
+        payDiffBox.className = 'rounded-2xl bg-emerald-100 p-2';
+        payDiffLabel.className = 'text-[11px] font-semibold uppercase text-emerald-700';
+        payDiffEl.className = 'text-sm font-black text-emerald-800';
+    } else if (diff > 0) {
+        payDiffLabel.textContent = 'Falta';
+        payDiffEl.textContent = brMoney(diff);
+        payDiffBox.className = 'rounded-2xl bg-amber-100 p-2';
+        payDiffLabel.className = 'text-[11px] font-semibold uppercase text-amber-700';
+        payDiffEl.className = 'text-sm font-black text-amber-800';
+    } else {
+        payDiffLabel.textContent = 'Troco';
+        payDiffEl.textContent = brMoney(-diff);
+        payDiffBox.className = 'rounded-2xl bg-sky-100 p-2';
+        payDiffLabel.className = 'text-[11px] font-semibold uppercase text-sky-700';
+        payDiffEl.className = 'text-sm font-black text-sky-800';
+    }
+}
+
+function addPayment(prefillRemaining = true) {
+    const remaining = Math.round((currentSaleTotal - paymentsPaidSum()) * 100) / 100;
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-payment-row', '1');
+    wrapper.className = 'rounded-2xl border border-slate-200 p-3';
+    wrapper.innerHTML = `
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select name="payments[method][]" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500">
+                ${paymentMethodOptions.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            </select>
+            <input type="number" min="0" step="0.01" name="payments[amount][]" placeholder="Valor" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500">
+        </div>
+        <div data-troca-fields class="mt-2 hidden grid-cols-1 gap-2 sm:grid-cols-3">
+            <input type="text" name="payments[troca_desc][]" placeholder="Item recebido (ex.: Roda aro 15 usada)" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 sm:col-span-2">
+            <input type="number" min="1" step="1" value="1" name="payments[troca_qty][]" placeholder="Qtd" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500">
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+            <button type="button" data-fill-remaining class="text-xs font-bold text-emerald-700 underline">= restante</button>
+            <button type="button" data-remove-payment class="text-xs font-bold text-rose-700 underline">Remover</button>
+        </div>
+    `;
+
+    const methodSelect = wrapper.querySelector('select[name="payments[method][]"]');
+    const amountInput = wrapper.querySelector('input[name="payments[amount][]"]');
+    const trocaFields = wrapper.querySelector('[data-troca-fields]');
+    const trocaDesc = wrapper.querySelector('input[name="payments[troca_desc][]"]');
+
+    if (prefillRemaining && remaining > 0) {
+        amountInput.value = remaining.toFixed(2);
+    }
+
+    function syncTroca() {
+        const isTroca = methodSelect.value === 'troca';
+        trocaFields.classList.toggle('hidden', !isTroca);
+        trocaFields.classList.toggle('grid', isTroca);
+        trocaDesc.required = isTroca;
+    }
+
+    methodSelect.addEventListener('change', syncTroca);
+    amountInput.addEventListener('input', recalcPayments);
+    wrapper.querySelector('[data-fill-remaining]').addEventListener('click', () => {
+        const rem = Math.round((currentSaleTotal - paymentsPaidSum() + Number(amountInput.value || 0)) * 100) / 100;
+        amountInput.value = (rem > 0 ? rem : 0).toFixed(2);
+        recalcPayments();
+    });
+    wrapper.querySelector('[data-remove-payment]').addEventListener('click', () => {
+        wrapper.remove();
+        recalcPayments();
+    });
+
+    paymentsWrapper.appendChild(wrapper);
+    syncTroca();
+    recalcPayments();
+}
+
 addItem();
+addPayment(false);
 recalcTotal();
 
 function clearCustomerSelection() {

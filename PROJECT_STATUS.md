@@ -42,30 +42,39 @@ flowchart LR
 
 ## 2. Tarefa atual
 
-### Mapa interativo de clientes no ERP
+### Pagamentos multiplos e venda com troca no PDV
 
-**Estado:** implantado e validado em producao.
+**Estado:** implementado localmente, validacao com banco e deploy pendentes.
 **Prioridade:** alta.
 
 ### Objetivo
 
-Criar uma pagina "Mapa" no ERP com um mapa real e interativo do Brasil (tiles do
-OpenStreetMap via Leaflet) que mostre onde moram os clientes. O posicionamento deve
-ser o mais real possivel, com referencia de ruas e cidades e escala/zoom ajustaveis
-para aproximar e ver onde o cliente mora. As coordenadas sao obtidas por
-geocodificacao de endereco (rua/numero via Nominatim, com fallback para CEP e cidade)
-e ficam em cache no banco para nao repetir consultas externas.
+Permitir registrar no PDV vendas quitadas por mais de um meio de pagamento
+(ex.: pix + dinheiro, cartao + dinheiro) e vendas com troca, em que o cliente
+paga parte com mercadoria (rodas/pneus usados). Modelo unificado: a venda passa
+a ser quitada por N linhas de pagamento (`sale_payments`), cada uma com meio e
+valor cuja soma deve fechar o total. A troca e uma linha de pagamento do tipo
+`troca`, com a venda mantendo o valor cheio dos produtos vendidos (decisao do
+usuario: pagamento em mercadoria, nao desconto). Os itens recebidos na troca
+entram no estoque como produto usado (custo = valor da troca), permitindo revenda
+e CMV correto.
+
+Escopo desta entrega: PDV desktop. O PDV mobile e o fluxo de link de venda
+continuam funcionando com pagamento unico (compatibilidade retroativa em
+`sale_finalize.php`). Ressalva fiscal: o tratamento de troca/permuta na NF-e deve
+ser confirmado com o contador; o ERP apenas modela o valor correto.
 
 ### Criterios objetivos de conclusao
 
-- [x] Adicionar colunas de geolocalizacao (`geo_*`) a tabela `customers` via ensure-schema e sincronizar `sql/schema.sql`.
-- [x] Implementar servico de geocodificacao via Nominatim (rua -> cidade) com enriquecimento por ViaCEP, limite de 1 req/seg e cache no banco.
-- [x] Criar action protegida para geocodificar clientes pendentes em lote.
-- [x] Criar pagina `mapa` com Leaflet + OpenStreetMap, marcadores por cliente, popup com nome/endereco/vendas, filtro por UF, controle de escala e zoom.
-- [x] Registrar a pagina `mapa` no roteador `index.php` e no menu de navegacao.
-- [x] Validar sintaxe PHP (`php -l`) de todos os arquivos novos e alterados.
-- [x] Validar renderizacao com banco e sincronizar localizacoes reais (validado em producao apos deploy).
-- [x] Deploy em producao (commit `433b8f2` aplicado por fast-forward na VPS).
+- [x] Criar tabela `sale_payments` via ensure-schema e sincronizar `sql/schema.sql`.
+- [x] Atualizar `sale_finalize.php` para aceitar varias linhas de pagamento, validar que a soma fecha o total e manter compatibilidade com o pagamento unico antigo.
+- [x] Registrar linha de pagamento `troca` e dar entrada do item recebido no estoque como produto usado, com movimento de estoque.
+- [x] Derivar status de pagamento e contas a receber a partir das linhas `prazo`.
+- [x] Atualizar o PDV desktop com construtor de pagamentos (meio + valor + campos de troca) e indicador ao vivo de pago/falta/troco.
+- [x] Atualizar o mix de pagamento do painel financeiro para somar `sale_payments`, com fallback para vendas antigas.
+- [x] Validar sintaxe PHP (`php -l`) de todos os arquivos alterados.
+- [ ] Validar com banco (render do PDV, finalizacao com pagamento misto e com troca, mix do financeiro) — bloqueado: MySQL local recusou conexao em `127.0.0.1:3306`.
+- [ ] Deploy em producao (aguardando pedido explicito do usuario).
 
 ## 3. Fases
 
@@ -263,6 +272,18 @@ e ficam em cache no banco para nao repetir consultas externas.
 - Producao: sincronizacao executada (`customerGeocodeSyncPending`, limite 60): 52 clientes localizados, 1 falhou, 1 remanescente. Precisao: 31 em nivel de rua, 21 em nivel de cidade.
 - Cliente id=139 falhou por dado: cidade "Feira da Santana" (correto "Feira de Santana"), rua abreviada "B VASCO 400" e sem CEP; corrigir no CRM e re-sincronizar.
 
+### Pagamentos multiplos e venda com troca no PDV (2026-06-29)
+
+- Criada tabela `sale_payments` (sale_id, method ENUM dinheiro/pix/cartao/prazo/troca, amount, note) via `ensureSalePaymentSchema` em `includes/sale_schema.php` e em `sql/schema.sql`.
+- `actions/sale_finalize.php` passou a ler `payments[method][]`, `payments[amount][]`, `payments[troca_desc][]` e `payments[troca_qty][]`, validar que a soma fecha o total (tolerancia 0,01) e gravar uma linha por pagamento.
+- Compatibilidade retroativa: quando nao ha linhas (PDV mobile e link de venda), sintetiza uma unica linha a partir do `payment_method`/`payment_status` antigos.
+- Linha `troca` com descricao cria produto `usado` (custo = valor/qtd) e movimento de estoque `in`; status de pagamento e contas a receber passam a derivar das linhas `prazo` (somente a parte a prazo vira `accounts_receivable`).
+- PDV desktop (`pages/pdv.php`): seletor unico substituido por construtor de pagamentos (meio + valor, campos de troca condicionais) com indicador ao vivo de Total/Pago/Falta/Troco, botao "= restante" e validacao no submit.
+- Painel financeiro (`includes/financial_dashboard.php`): mix de pagamento agora soma `sale_payments` por meio, com fallback para `payment_method` em vendas antigas (helper `financialPaymentMix`).
+- `php -l` aprovado em `includes/sale_schema.php`, `actions/sale_finalize.php`, `pages/pdv.php` e `includes/financial_dashboard.php`.
+- Lacuna: MySQL local recusou conexao, entao finalizacao real (pagamento misto e troca), render do PDV e mix do financeiro nao foram validados localmente. Deploy nao realizado (aguardando pedido).
+- Ressalva fiscal pendente: tratamento de troca/permuta na NF-e a confirmar com o contador.
+
 | Venda | Valor confirmado no XML | NF-e autorizadas | Excedentes | Observacao |
 |---|---:|---|---:|---|
 | Lucas Lima | R$ 800,00 | 1148 a 1153 | 5 | ERP reconhece apenas a 1153 como autorizada |
@@ -319,6 +340,7 @@ e ficam em cache no banco para nao repetir consultas externas.
 | 2026-06-29 | Endereco sempre visivel com obrigatoriedade por NF-e | Implantado e validado parcialmente | Commit `fbfd05d`; lint aprovado localmente e na VPS; PDV e PDV mobile responderam `HTTP 200`, dashboard preservou `HTTP 302` |
 | 2026-06-29 | Painel financeiro interativo no Dashboard e Financeiro | Implantado e validado parcialmente | Commit `ecf15bd`; lint aprovado localmente e na VPS; calculo com banco de producao retornou `OK revenue=190791.5 sellers=5`; renderizacao retornou `RENDER_OK` |
 | 2026-06-29 | Mapa interativo de clientes (pagina `mapa`) | Implantado e validado | Commit `433b8f2` por fast-forward na VPS; lint aprovado; `mapa` retornou `302` para login; render autenticado confirmou pagina e migracao `geo_*`; sync localizou 52 de 53 clientes (31 rua, 21 cidade) |
+| 2026-06-29 | Pagamentos multiplos e venda com troca no PDV | Implementado localmente, validacao com banco e deploy pendentes | `sale_payments` + finalize multi-pagamento/troca + construtor no PDV desktop + mix do financeiro; `php -l` aprovado nos 4 arquivos; MySQL local indisponivel, sem teste com banco |
 
 ## 8. Regras de trabalho com o Codex
 

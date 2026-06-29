@@ -9,6 +9,60 @@ function financialTableExists(PDO $pdo, string $table): bool
     return (bool) $stmt->fetchColumn();
 }
 
+/**
+ * Mix de pagamento por meio no periodo, somando as linhas de sale_payments.
+ * Vendas antigas sem linhas usam o payment_method unico como fallback.
+ *
+ * @return array<string,float> metodo => valor
+ */
+function financialPaymentMix(PDO $pdo, string $start, string $end): array
+{
+    $mix = [];
+
+    if (financialTableExists($pdo, 'sale_payments')) {
+        $stmt = $pdo->prepare(
+            'SELECT sp.method AS method, SUM(sp.amount) AS total
+             FROM sale_payments sp
+             INNER JOIN sales s ON s.id = sp.sale_id
+             WHERE s.created_at >= ? AND s.created_at < ?
+             GROUP BY sp.method'
+        );
+        $stmt->execute([$start, $end]);
+        foreach ($stmt->fetchAll() as $row) {
+            $method = (string) ($row['method'] ?: 'nao informado');
+            $mix[$method] = ($mix[$method] ?? 0.0) + (float) $row['total'];
+        }
+
+        $legacy = $pdo->prepare(
+            'SELECT COALESCE(NULLIF(TRIM(s.payment_method), \'\'), \'nao informado\') AS method, SUM(s.total_amount) AS total
+             FROM sales s
+             LEFT JOIN sale_payments sp ON sp.sale_id = s.id
+             WHERE s.created_at >= ? AND s.created_at < ? AND sp.id IS NULL
+             GROUP BY method'
+        );
+        $legacy->execute([$start, $end]);
+        foreach ($legacy->fetchAll() as $row) {
+            $method = (string) $row['method'];
+            $mix[$method] = ($mix[$method] ?? 0.0) + (float) $row['total'];
+        }
+
+        return $mix;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COALESCE(NULLIF(TRIM(s.payment_method), \'\'), \'nao informado\') AS method, SUM(s.total_amount) AS total
+         FROM sales s
+         WHERE s.created_at >= ? AND s.created_at < ?
+         GROUP BY method'
+    );
+    $stmt->execute([$start, $end]);
+    foreach ($stmt->fetchAll() as $row) {
+        $mix[(string) $row['method']] = (float) $row['total'];
+    }
+
+    return $mix;
+}
+
 function financialNormalizeText(string $value): string
 {
     $value = mb_strtolower(trim($value));
@@ -245,7 +299,6 @@ function financialDashboardData(PDO $pdo): array
                 'seller' => $seller,
                 'payment' => $payment,
             ];
-            $paymentMix[$payment] = ($paymentMix[$payment] ?? 0.0) + (float) $row['sale_total'];
         }
 
         if (!isset($sellerMonth[$seller])) {
@@ -263,6 +316,12 @@ function financialDashboardData(PDO $pdo): array
             $uncostedItems++;
         }
     }
+
+    $paymentMix = financialPaymentMix(
+        $pdo,
+        $monthStart->format('Y-m-d 00:00:00'),
+        $tomorrow->format('Y-m-d 00:00:00')
+    );
 
     $elapsedDays = (int) $monthStart->diff($today)->days + 1;
     $salaryMonth = $dailySalary * $elapsedDays;
